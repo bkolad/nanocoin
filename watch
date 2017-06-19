@@ -1,1 +1,1 @@
-ghcid --command="stack repl nanochain:lib" 
+ghcid --command="stack repl nanocoin:lib" 
