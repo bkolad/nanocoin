@@ -37,8 +37,8 @@ initNodes peersMV = do
   forM_  peers $ \peer -> 
     forkIO $ initNode peer peersMV 
 
-newPeerServer :: Int -> MVar [Peer.Peer] -> IO ()
-newPeerServer port peersMV = scotty port $ 
+addPeerServer :: Int -> MVar [Peer.Peer] -> IO ()
+addPeerServer port peersMV = scotty port $ 
   get "/addPeer/:rpcPort" $ do
     newRPCPort <- param "rpcPort"
     currentPeers <- liftIO $ readMVar peersMV
@@ -55,5 +55,5 @@ initNanochain :: IO ()
 initNanochain = do
   peersMV <- newMVar Peer.bootNodes
   initNodes peersMV
-  newPeerServer 8545 peersMV
+  addPeerServer 8545 peersMV
 

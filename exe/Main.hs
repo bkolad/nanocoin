@@ -1,6 +1,6 @@
 module Main where
 
-import qualified Nanochain (main)
+import qualified Nanochain (initNanochain)
 
 main :: IO ()
-main = Nanochain.main
+main = Nanochain.initNanochain
