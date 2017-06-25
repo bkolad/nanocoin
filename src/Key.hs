@@ -14,6 +14,8 @@ module Key (
   
 ) where
 
+import Protolude
+
 import qualified Crypto.PubKey.ECC.ECDSA as ECDSA 
 import qualified Crypto.PubKey.ECC.Generate as ECC
 import qualified Crypto.PubKey.ECC.Prim as ECC

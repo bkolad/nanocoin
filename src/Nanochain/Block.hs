@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections #-}
 
 module Nanochain.Block (
   Block(..),
@@ -15,12 +16,10 @@ module Nanochain.Block (
   proofOfWork,
   generateNextBlock,
   addBlock,
-  addBlockMVar,
   getLatestBlock,
-  mineAndAppendBlock,
+  mineAndAddBlock,
   
   isValidChain,
-  setChain,
   replaceChain,
   emptyBlockchain,
 
@@ -125,11 +124,11 @@ proofOfWork idx prevHash ts blockData' = calcNonce 0
         prefix' = T.take dbits $ encode64 hash' 
 
 isValidBlock :: Block -> Block -> Maybe Text
-isValidBlock previousBlock newBlock
-  | blockIdx previousBlock + 1  /= blockIdx newBlock     = Just "Index is invalid"
-  | blockHash previousBlock     /= previousHash newBlock = Just "PreviousHash is invalid"
-  | calcBlockHash newBlock      /= blockHash newBlock    = Just "Hash is invalid"
-  | otherwise                                            = Nothing
+isValidBlock prevBlock newBlock
+  | blockIdx prevBlock + 1  /= blockIdx newBlock     = Just "Index is invalid"
+  | blockHash prevBlock     /= previousHash newBlock = Just "PreviousHash is invalid"
+  | not (validateBlock newBlock)                     = Just "Hash is invalid"
+  | otherwise                                        = Nothing
 
 isValidChain :: Blockchain -> Maybe Text
 isValidChain (x0:x1:xs) = isValidBlock x1 x0 <|> isValidChain (x1:xs)
@@ -139,42 +138,37 @@ isValidChain [] = Just "Empty chain"
 emptyBlockchain :: Blockchain
 emptyBlockchain = []
 
-addBlock :: Block -> Blockchain -> Blockchain
-addBlock _ [] = []
-addBlock b (pb:bs) 
-  | isNothing (isValidBlock pb b) = b : pb : bs
-  | otherwise = pb : bs
-
-addBlockMVar :: Block -> MVar Blockchain -> IO ()
-addBlockMVar b = flip modifyMVar_ (return . addBlock b) 
+addBlock :: Block -> Blockchain -> Either Text Blockchain
+addBlock _ [] = Left "Cannot add block to empty chain"
+addBlock b (pb:bs) = 
+  case isValidBlock pb b of
+    Nothing -> Right $ b : pb : bs
+    Just err -> Left err
 
 -- | Get the latest block from the chain
-getLatestBlock :: MVar Blockchain -> IO (Maybe Block)
-getLatestBlock chain = head <$> readMVar chain
+getLatestBlock :: Blockchain -> Maybe Block
+getLatestBlock = head 
 
 -- | Generate a new block in the chain
-mineAndAppendBlock :: MVar Blockchain -> Maybe Block -> IO (Maybe Block)
-mineAndAppendBlock _ Nothing = pure Nothing
-mineAndAppendBlock chain (Just latestBlock) = modifyMVar chain $ \chain' -> do
-  ts <- now
-  let newBlock = generateNextBlock latestBlock ts "" -- XXX: empty for now
-  let newChain = addBlock newBlock chain'
-  return (newChain, Just newBlock)
+mineAndAddBlock :: MonadIO m => Blockchain -> m (Either Text (Block, Blockchain))
+mineAndAddBlock chain = do 
+  ts <- liftIO now
+  let mLatestBlock = getLatestBlock chain
+  case mLatestBlock of
+    Nothing -> return $ Left "mineAndAddBlock: Chain is empty" 
+    Just latestBlock -> do
+      let newBlock = generateNextBlock latestBlock ts "" 
+      let eNewChain = addBlock newBlock chain
+      return $ (newBlock,) <$> eNewChain
 
 -- | Returns Nothing if chain should be replaced
 replaceChain :: Blockchain -> Blockchain -> Maybe Text 
-replaceChain oldChain newChain = case isValidChain newChain of
-  Nothing 
-    | length newChain > length oldChain -> Nothing
-    | otherwise -> Just "replaceChain: invalid chain"
-  Just err -> Just err 
-
--- | Replaces local block chain if new chain is longer
-setChain :: MVar Blockchain -> Blockchain -> IO ()
-setChain chain newChain = modifyMVar_ chain $ \oldChain -> 
-  case replaceChain oldChain newChain of
-    Nothing -> return newChain
-    Just err -> putStrLn err >> return oldChain 
+replaceChain oldChain newChain = 
+  case isValidChain newChain of
+    Nothing 
+      | length newChain > length oldChain -> Nothing
+      | otherwise -> Just "replaceChain: invalid chain"
+    Just err -> Just err 
 
 now :: IO Integer
 now = round `fmap` getPOSIXTime 

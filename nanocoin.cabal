@@ -12,13 +12,17 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:   Nanochain,
-                     Nanochain.P2P,
                      Nanochain.Block,
+                     Nanochain.Network.Multicast,
+                     Nanochain.Network.Message,
+                     Nanochain.Network.Node,
+                     Nanochain.Network.P2P,
+                     Nanochain.Network.Peer,
+                     Nanochain.Network.RPC,
                      
                      Address,
                      Hash,
-                     Key,
-                     Multicast
+                     Key
 
   build-depends:      
     base              >= 4.6    && <5.0,
@@ -31,6 +35,7 @@ library
     aeson             >= 1.0    && <1.1,
     cereal            >= 0.5    && <0.6,
     bytestring        >= 0.10   && <0.11,
+    base58-bytestring >= 0.0.3  && <1.0,
     base64-bytestring >= 1.0    && <1.1,
     cryptonite        >= 0.20   && <0.30,
     scotty            >= 0.11   && <0.12,
@@ -38,9 +43,9 @@ library
     network-multicast >= 0.2    && <0.3,
     network-transport >= 0.4    && <0.5
   default-language:   Haskell2010
+  default-extensions: OverloadedStrings NoImplicitPrelude 
   hs-source-dirs:     src
   ghc-options:
-    -Wall
     -Werror
     -fno-warn-type-defaults
 

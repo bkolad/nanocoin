@@ -1,7 +1,15 @@
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 
-module Multicast (initMulticast) where
+module Nanochain.Network.Multicast (
+  HostName,
+  PortNumber,
+
+  Receiver,
+  Sender,
+  
+  defMulticastHostName,
+  initMulticast,
+) where
 
 import qualified Data.ByteString as BSS (ByteString, concat)
 import qualified Data.ByteString.Lazy as BSL
@@ -22,6 +30,12 @@ import           Protolude
 -- Top-level API                                                              --
 --------------------------------------------------------------------------------
 
+defMulticastHostName :: HostName 
+defMulticastHostName  = "224.0.0.1"
+
+type Sender a = a -> IO ()
+type Receiver a = IO (Either Text (a, SockAddr)) 
+
 -- | Given a hostname and a port number, initialize the multicast system.
 --
 -- Note: it is important that you never send messages larger than the maximum
@@ -33,7 +47,7 @@ initMulticast
   => HostName    -- ^ Multicast IP
   -> PortNumber  -- ^ Port number
   -> Int         -- ^ Maximum message size
-  -> IO (IO (Either Text (a, SockAddr)), a -> IO ())
+  -> IO (Receiver a, Sender a)
 initMulticast host port bufferSize = do
     (sendSock, sendAddr) <- multicastSender host port
     readSock <- multicastReceiver host port
