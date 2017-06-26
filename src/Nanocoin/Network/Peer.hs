@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Nanochain.Network.Peer (
+module Nanocoin.Network.Peer (
   Peer(..),
   getPeerPorts,
   bootNodes,
@@ -16,7 +16,7 @@ import Data.Aeson (ToJSON(..))
 import Data.List (nub, unzip)
 import qualified Data.Serialize as S
 
-import Nanochain.Network.Multicast
+import Nanocoin.Network.Multicast
 
 type RPCPort = Int
 

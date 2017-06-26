@@ -1,6 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 
-module Nanochain.Network.Multicast (
+module Nanocoin.Network.Multicast (
   HostName,
   PortNumber,
 

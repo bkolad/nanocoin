@@ -11,14 +11,14 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:   Nanochain,
-                     Nanochain.Block,
-                     Nanochain.Network.Multicast,
-                     Nanochain.Network.Message,
-                     Nanochain.Network.Node,
-                     Nanochain.Network.P2P,
-                     Nanochain.Network.Peer,
-                     Nanochain.Network.RPC,
+  exposed-modules:   Nanocoin,
+                     Nanocoin.Block,
+                     Nanocoin.Network.Multicast,
+                     Nanocoin.Network.Message,
+                     Nanocoin.Network.Node,
+                     Nanocoin.Network.P2P,
+                     Nanocoin.Network.Peer,
+                     Nanocoin.Network.RPC,
                      
                      Address,
                      Hash,

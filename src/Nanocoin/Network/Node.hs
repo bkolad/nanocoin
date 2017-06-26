@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Nanochain.Network.Node (
+module Nanocoin.Network.Node (
   NodeState(..),
 
   initNodeState,
@@ -20,10 +20,10 @@ import Protolude
 import Control.Concurrent.MVar (MVar)
 import Data.Aeson (ToJSON(..)) 
 
-import qualified Nanochain.Block as Block
-import qualified Nanochain.Network.Message as Msg
-import qualified Nanochain.Network.Multicast as M
-import qualified Nanochain.Network.Peer as Peer 
+import qualified Nanocoin.Block as Block
+import qualified Nanocoin.Network.Message as Msg
+import qualified Nanocoin.Network.Multicast as M
+import qualified Nanocoin.Network.Peer as Peer 
 
 data NodeState = NodeState
   { nodeConfig   :: Peer.Peer

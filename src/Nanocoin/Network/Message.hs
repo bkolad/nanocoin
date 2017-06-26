@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Nanochain.Network.Message (
+module Nanocoin.Network.Message (
   Msg(..),
   MsgSender,
   MsgReceiver,
@@ -11,9 +11,9 @@ import Protolude hiding (msg)
 
 import qualified Data.Serialize as S
 
-import qualified Nanochain.Block as Block
-import qualified Nanochain.Network.Multicast as M 
-import qualified Nanochain.Network.Peer as Peer 
+import qualified Nanocoin.Block as Block
+import qualified Nanocoin.Network.Multicast as M 
+import qualified Nanocoin.Network.Peer as Peer 
 
 data Msg 
   = QueryLatestBlock

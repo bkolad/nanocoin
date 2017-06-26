@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Nanochain.Network.P2P (
+module Nanocoin.Network.P2P (
   p2p,
 ) where
 
@@ -11,12 +11,12 @@ import Control.Arrow ((&&&))
 
 import Network.Socket (HostName, PortNumber)
 
-import qualified Nanochain.Network.Multicast as M
-import qualified Nanochain.Network.Message as Msg 
-import qualified Nanochain.Network.Node as Node
-import qualified Nanochain.Network.Peer as Peer 
-import qualified Nanochain.Network.RPC as RPC 
-import qualified Nanochain.Block as Block
+import qualified Nanocoin.Network.Multicast as M
+import qualified Nanocoin.Network.Message as Msg 
+import qualified Nanocoin.Network.Node as Node
+import qualified Nanocoin.Network.Peer as Peer 
+import qualified Nanocoin.Network.RPC as RPC 
+import qualified Nanocoin.Block as Block
 
 -------------------------------------------------------------------------------
 -- P2P

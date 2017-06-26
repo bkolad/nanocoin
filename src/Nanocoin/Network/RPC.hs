@@ -1,6 +1,6 @@
 
 
-module Nanochain.Network.RPC (
+module Nanocoin.Network.RPC (
   rpcServer
 ) where
 
@@ -8,11 +8,11 @@ import Protolude hiding (get)
 
 import Web.Scotty
 
-import qualified Nanochain.Block as Block
-import Nanochain.Network.Node (NodeState(..), getNodePeers, getNodeChain
+import qualified Nanocoin.Block as Block
+import Nanocoin.Network.Node (NodeState(..), getNodePeers, getNodeChain
                               ,setNodeChain, getPortsInUse)
-import Nanochain.Network.Peer
-import qualified Nanochain.Network.Message as Msg
+import Nanocoin.Network.Peer
+import qualified Nanocoin.Network.Message as Msg
 
 -------------------------------------------------------------------------------
 -- RPC (HTTP) Server

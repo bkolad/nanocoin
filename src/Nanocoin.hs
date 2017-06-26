@@ -2,20 +2,20 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 
-module Nanochain (
-  initNanochain
+module Nanocoin (
+  initNanocoin
 ) where
 
 import Protolude hiding (get, put)
 
 import Web.Scotty
 
-import qualified Nanochain.Network.Message as Msg 
-import qualified Nanochain.Network.Node as Node
-import qualified Nanochain.Network.P2P as P2P
-import qualified Nanochain.Network.Peer as Peer
-import qualified Nanochain.Network.RPC as RPC 
-import qualified Nanochain.Block as Block
+import qualified Nanocoin.Network.Message as Msg 
+import qualified Nanocoin.Network.Node as Node
+import qualified Nanocoin.Network.P2P as P2P
+import qualified Nanocoin.Network.Peer as Peer
+import qualified Nanocoin.Network.RPC as RPC 
+import qualified Nanocoin.Block as Block
 
 -- | Initializes a node on the network with it's own copy of 
 -- the blockchain, and invokes a p2p server and an http server. 
@@ -51,8 +51,8 @@ addPeerServer port peersMV = scotty port $
       liftIO $ forkIO $ initNode newPeer peersMV 
       json newPeer
 
-initNanochain :: IO ()
-initNanochain = do
+initNanocoin :: IO ()
+initNanocoin = do
   peersMV <- newMVar Peer.bootNodes
   initNodes peersMV
   addPeerServer 8545 peersMV

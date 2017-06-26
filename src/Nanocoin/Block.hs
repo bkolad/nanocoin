@@ -5,7 +5,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TupleSections #-}
 
-module Nanochain.Block (
+module Nanocoin.Block (
   Block(..),
   Blockchain,
   hashBlockParams, 
