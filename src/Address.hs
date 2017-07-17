@@ -2,7 +2,10 @@
 {-# Language GeneralizedNewtypeDeriving #-}
 
 module Address (
-
+  Address,
+  rawAddress,
+  mkAddress,
+  deriveAddress,
 ) where
 
 import Protolude
@@ -12,6 +15,7 @@ import Crypto.Number.Serialize (i2osp)
 import Data.Aeson (ToJSON(..), Value(..))
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString.Base58 as B58
+import qualified Data.Serialize as S
 
 import qualified Hash
 import qualified Key 
@@ -21,10 +25,14 @@ addrSize = 32
 
 -- | A ledger address, derived from elliptic curve point
 newtype Address = Address { rawAddress :: ByteString } 
-  deriving (Eq, Ord, Monoid)
+  deriving (Show, Eq, Ord, Monoid, S.Serialize, IsString)
 
 instance ToJSON Address where
   toJSON (Address bs) = Data.Aeson.String (decodeUtf8 bs)
+
+-- | UNSAFE: Does not validate ByteString supplied
+mkAddress :: ByteString -> Address
+mkAddress = Address . b58
 
 -- | Derive an address from an ECC public key
 --

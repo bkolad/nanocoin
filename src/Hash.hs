@@ -4,11 +4,14 @@
 module Hash (
   Hash,
   rawHash,
+  getHash,
   sha256,
   sha256Raw,
   sha256Raw',
   ripemd160,
   ripemd160Raw,
+
+  SHA3_256(..),
 
   validateSha,
   validateSha',
@@ -21,6 +24,7 @@ module Hash (
 import Protolude
 
 import Crypto.Hash
+import Crypto.Hash.Algorithms
 
 import qualified Data.ByteArray as BA
 import qualified Data.ByteArray.Encoding as BA

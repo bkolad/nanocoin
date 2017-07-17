@@ -1,12 +1,16 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Key (
   ECDSA.PublicKey,
   ECDSA.PrivateKey,
-  KeyPair,
+  KeyPair(..),
   newKeyPair,
 
+  ECDSA.Signature,
   ECDSA.sign,
+  signS,
   ECDSA.verify,
 
   toPublic,
@@ -20,6 +24,14 @@ import qualified Crypto.PubKey.ECC.ECDSA as ECDSA
 import qualified Crypto.PubKey.ECC.Generate as ECC
 import qualified Crypto.PubKey.ECC.Prim as ECC
 import qualified Crypto.PubKey.ECC.Types as ECC
+
+import qualified Data.Serialize as S
+
+import qualified Hash
+
+-- | Oh no, Orphan instance! Fuck it...
+deriving instance Generic ECDSA.Signature
+instance S.Serialize ECDSA.Signature
 
 -- | All ECC is done using curve SECP256K1
 sec_p256k1 :: ECC.Curve
@@ -57,3 +69,7 @@ extractPoint :: ECDSA.PublicKey -> (Integer, Integer)
 extractPoint pubkey = (x,y)
   where
     ECC.Point x y = ECDSA.public_q pubkey 
+
+-- | Serializes a msg before signing
+signS :: S.Serialize a => ECDSA.PrivateKey -> a -> IO ECDSA.Signature
+signS pk msg = ECDSA.sign pk Hash.SHA3_256 (S.encode msg)

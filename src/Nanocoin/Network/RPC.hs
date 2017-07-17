@@ -14,6 +14,8 @@ import Nanocoin.Network.Node (NodeState(..), getNodePeers, getNodeChain
 import Nanocoin.Network.Peer
 import qualified Nanocoin.Network.Message as Msg
 
+import qualified Key
+
 -------------------------------------------------------------------------------
 -- RPC (HTTP) Server
 -------------------------------------------------------------------------------
@@ -33,12 +35,13 @@ rpcServer nodeState = do
 
     get "/mineBlock" $ do
       chain <- getNodeChain nodeState
-      mRes <- Block.mineAndAddBlock chain 
+      let privKey = Key.privateKey $ nodeKeys nodeState
+      mRes <- Block.mineAndAddBlock chain privKey ([] {- XXX MemPool -}) 
       case mRes of
         Left err -> text $ toS err
         Right (newBlock, newChain) -> do 
           putStrLn $ "Adding block with hash: " <> 
-            Block.encode64 (Block.blockHash newBlock)
+            Block.encode64 (Block.hashBlock newBlock)
           setNodeChain nodeState newChain
           liftIO $ p2pSender $ Msg.RespLatestBlock newBlock 
           json newBlock 

@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
 module Nanocoin.Network.P2P (
@@ -71,8 +70,8 @@ handleResponse nodeState newChain = do
           logThread' "Empty local chain..." 
           return Nothing
         Just latestBlockHeld
-          | Block.blockIdx latestBlockRec > 
-            Block.blockIdx latestBlockHeld -> do 
+          | Block.index latestBlockRec > 
+            Block.index latestBlockHeld -> do 
               logThread' "Local chain potentially behind..."
               respond latestBlockRec latestBlockHeld
           | otherwise -> do 
@@ -80,8 +79,8 @@ handleResponse nodeState newChain = do
               return Nothing
   where
     respond latestBlockRec latestBlockHeld 
-      | Block.blockHash latestBlockHeld == 
-        Block.previousHash latestBlockRec = do
+      | Block.hashBlock latestBlockHeld == 
+        Block.previousHash (Block.header latestBlockRec) = do
           Node.addBlockNodeChain nodeState latestBlockRec 
           return $ Just $ Msg.RespLatestBlock latestBlockRec
       | length newChain == 1 = return $ Just Msg.QueryBlockchain

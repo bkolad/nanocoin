@@ -25,10 +25,13 @@ import qualified Nanocoin.Network.Message as Msg
 import qualified Nanocoin.Network.Multicast as M
 import qualified Nanocoin.Network.Peer as Peer 
 
+import qualified Key
+
 data NodeState = NodeState
   { nodeConfig   :: Peer.Peer
   , nodeChain    :: MVar Block.Blockchain
   , nodePeers    :: MVar [Peer.Peer]
+  , nodeKeys     :: Key.KeyPair
   , nodeSender   :: Msg.MsgSender 
   , nodeReceiver :: Msg.MsgReceiver
   } 
@@ -37,11 +40,13 @@ initNodeState :: Peer.Peer -> MVar [Peer.Peer] -> IO NodeState
 initNodeState self peersMV = do
   let (Peer.Peer hn p2pPort _) = self
   chainMV <- newMVar [Block.genesisBlock]
+  keyPair <- Key.newKeyPair 
   (receiver, sender) <- M.initMulticast hn p2pPort 65536
   return NodeState 
     { nodeConfig   = self
     , nodeChain    = chainMV
     , nodePeers    = peersMV
+    , nodeKeys     = keyPair 
     , nodeSender   = sender
     , nodeReceiver = receiver
     }
@@ -79,6 +84,12 @@ getLatestBlock = fmap head . getNodeChain
 
 getNodePeers :: MonadIO m => NodeState -> m [Peer.Peer]
 getNodePeers = liftIO . readMVar . nodePeers
+
+readMVar' :: MonadIO m => MVar a -> m a
+readMVar' = liftIO . readMVar 
+
+getMVar :: MonadIO m => (a -> MVar b) -> a -> m b
+getMVar f = readMVar' . f
 
 -- | Returns ports in use by the blockchain network
 getPortsInUse :: MonadIO m => NodeState -> m [Int]
