@@ -13,6 +13,10 @@ cabal-version:       >=1.10
 library
   exposed-modules:   Nanocoin,
                      Nanocoin.Block,
+                     Nanocoin.Ledger,
+                     Nanocoin.MemPool,
+                     Nanocoin.Transaction,
+                     
                      Nanocoin.Network.Multicast,
                      Nanocoin.Network.Message,
                      Nanocoin.Network.Node,

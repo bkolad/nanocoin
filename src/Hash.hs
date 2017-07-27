@@ -18,7 +18,10 @@ module Hash (
   validateSha16,
 
   base16,
-  unbase16
+  unbase16,
+
+  encode64,
+  decode64
 ) where
 
 import Protolude
@@ -28,6 +31,8 @@ import Crypto.Hash.Algorithms
 
 import qualified Data.ByteArray as BA
 import qualified Data.ByteArray.Encoding as BA
+import qualified Data.ByteString.Base64 as BS64
+import qualified Data.Text.Encoding as T
 
 -- | Base16 encoding
 hashSize = 64
@@ -83,9 +88,19 @@ validateSha16 bs = case unbase16 bs of
   Left err -> False
   Right bs' -> BA.length (bs' :: ByteString) == hashSize
 
+-------------------------------------------------------------------------------
+-- Encoding  
+-------------------------------------------------------------------------------
+
 base16 :: (BA.ByteArrayAccess bin, BA.ByteArray bout) => bin -> bout 
 base16 = BA.convertToBase BA.Base16
 
 unbase16 :: (BA.ByteArrayAccess bin, BA.ByteArray bout) => bin -> Either [Char] bout 
 unbase16 = BA.convertFromBase BA.Base16 
+
+encode64 :: ByteString -> Text
+encode64 = T.decodeUtf8 . BS64.encode
+
+decode64 :: (Monad m) => Text -> m ByteString
+decode64 = either (panic . toS) pure . BS64.decode . toS
 

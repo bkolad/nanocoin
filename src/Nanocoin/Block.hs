@@ -23,8 +23,8 @@ module Nanocoin.Block (
   replaceChain,
   emptyBlockchain,
 
-  encode64,
-  decode64
+  Hash.encode64,
+  Hash.decode64
 ) where
 
 import Protolude
@@ -39,7 +39,6 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
-import qualified Data.ByteString.Base64 as BS64
 import qualified Data.Serialize as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T 
@@ -48,30 +47,25 @@ import Address
 import qualified Hash 
 import qualified Key 
 
+import Nanocoin.Transaction (Transaction) 
+import qualified Nanocoin.Transaction 
+
 type Index      = Int 
-type Hash       = ByteString
 type Timestamp  = Integer
 type Blockchain = [Block]
 
-data Transaction = Transaction
-  { fromAddress :: Address
-  , toAddress   :: Address
-  , amount      :: Int
-  } deriving (Eq, Show, Generic, S.Serialize)
-
 data BlockHeader = BlockHeader
   { origin       :: Address       -- ^ Address of Block miner
-  , previousHash :: Hash          -- ^ Previous block hash
+  , previousHash :: ByteString    -- ^ Previous block hash
   , transactions :: [Transaction] -- ^ List of Transactions 
   , nonce        :: Int64         -- ^ Nonce for Proof-of-Work
   } deriving (Eq, Show, Generic, S.Serialize)
 
--- XXX Which fields should be in header?
 data Block = Block 
   { index        :: Index         -- ^ Block height
   , header       :: BlockHeader   -- ^ Block header    
   , timestamp    :: Timestamp     -- ^ Creation timestamp
-  , signature    :: ByteString    -- ^ Block hash
+  , signature    :: ByteString    -- ^ Block signature 
   } deriving (Eq, Show, Generic, S.Serialize)
 
 genesisBlock :: Block
@@ -94,12 +88,12 @@ genesisBlock = Block
 -------------------------------------------------------------------------------
 
 -- |
-hashBlockHeader :: BlockHeader -> Hash 
+hashBlockHeader :: BlockHeader -> ByteString 
 hashBlockHeader BlockHeader{..} = Hash.getHash $ Hash.sha256 $ BS.concat
   [ rawAddress origin, previousHash, S.encode transactions, B8.pack (show nonce) ]
 
 -- | Generate a block hash 
-hashBlock :: Block -> Hash 
+hashBlock :: Block -> ByteString 
 hashBlock = hashBlockHeader . header
 
 -------------------------------------------------------------------------------
@@ -149,7 +143,7 @@ proofOfWork idx blockHeader = blockHeader { nonce = calcNonce 0 }
       | otherwise = calcNonce $ n + 1
       where
         headerHash = hashBlockHeader (blockHeader { nonce = n })
-        prefix' = T.take dbits $ encode64 headerHash
+        prefix' = T.take dbits $ Hash.encode64 headerHash
 
 isValidBlock :: Block -> Block -> Maybe Text
 isValidBlock prevBlock newBlock
@@ -210,58 +204,34 @@ now = round `fmap` getPOSIXTime
 -- Serialization
 -------------------------------------------------------------------------------
 
-instance ToJSON Transaction where
-  toJSON (Transaction from to amnt) = 
-    object [ "fromAddress" .= encode64 (S.encode from)
-           , "toAddress"   .= encode64 (S.encode to)
-           , "amount"      .= toJSON amnt
-           ]
-
-instance FromJSON Transaction where
-  parseJSON (Object o) = do
-    fromAddr' <- fmap S.decode $ decode64 =<< (o .: "fromAddress") 
-    toAddr'   <- fmap S.decode $ decode64 =<< (o .: "toAddress") 
-    case (,) <$> fromAddr' <*> toAddr' of
-      Left err -> typeMismatch "Transaction: address" (Object o) 
-      Right (fromAddr, toAddr) -> do
-        amnt <- o .: "amount" 
-        pure $ Transaction fromAddr toAddr amnt
-  parseJSON invalid = typeMismatch "Transaction" invalid
-
 instance ToJSON BlockHeader where
   toJSON (BlockHeader o ph txs n) =
-    object [ "origin"       .= encode64 (rawAddress o)
-           , "previousHash" .= encode64 ph
+    object [ "origin"       .= Hash.encode64 (rawAddress o)
+           , "previousHash" .= Hash.encode64 ph
            , "transactions" .= toJSON txs
            , "nonce"        .= toJSON n
            ]
 
 instance FromJSON BlockHeader where
   parseJSON (Object o) = 
-    BlockHeader <$> (o .: "origin" >>= fmap mkAddress . decode64)  
-                <*> (o .: "previousHash" >>= decode64)
+    BlockHeader <$> (o .: "origin" >>= fmap mkAddress . Hash.decode64)  
+                <*> (o .: "previousHash" >>= Hash.decode64)
                 <*> (o .: "transactions")
                 <*> (o .: "nonce") 
 
 instance ToJSON Block where
   toJSON (Block i bh ts s) =
-    object [ "blockIdx"  .= i
+    object [ "index"  .= i
            , "header"    .= toJSON bh 
            , "timestamp" .= toJSON ts
-           , "signature" .= encode64 s 
+           , "signature" .= Hash.encode64 s 
            ]
 
 instance FromJSON Block where
   parseJSON (Object o) =
     Block <$>  o .: "index"
-          <*> (o .: "timestamp"    >>= pure)
-          <*> (o .: "nonce"        >>= pure)
-          <*> (o .: "blockHash"    >>= decode64)
+          <*>  o .: "header"
+          <*>  o .: "nonce"
+          <*> (o .: "signature" >>= Hash.decode64)
   parseJSON invalid = typeMismatch "Block" invalid  
-
-encode64 :: ByteString -> Text
-encode64 = T.decodeUtf8 . BS64.encode
-
-decode64 :: (Monad m) => Text -> m ByteString
-decode64 = either (panic . toS) pure . BS64.decode . toS
 
