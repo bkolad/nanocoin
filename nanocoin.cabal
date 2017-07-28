@@ -16,6 +16,7 @@ library
                      Nanocoin.Ledger,
                      Nanocoin.MemPool,
                      Nanocoin.Transaction,
+                     Nanocoin.Validate,
                      
                      Nanocoin.Network.Multicast,
                      Nanocoin.Network.Message,

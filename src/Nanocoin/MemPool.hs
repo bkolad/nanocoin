@@ -4,6 +4,8 @@ module Nanocoin.MemPool (
   MemPool(..)
 ) where
 
+import Protolude
+
 import Nanocoin.Transaction (Transaction)
 
 newtype MemPool = MemPool 

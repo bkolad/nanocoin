@@ -39,15 +39,6 @@ data Transaction
       }
   deriving (Eq, Show, Generic, S.Serialize)
 
-data InvalidTransaction
-  = NotEnoughFunds Transaction
-
-validateTransaction 
-  :: Ledger 
-  -> Transaction 
-  -> Either InvalidTransaction ()
-validateTransaction ledger tx = undefined
-
 hashTransaction :: Transaction -> ByteString
 hashTransaction Transaction{..} = Hash.getHash $ Hash.sha256 $ BS.concat
     [ headerHash header, B8.pack (show timestamp) ]
