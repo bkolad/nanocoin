@@ -11,7 +11,7 @@ module Key (
   ECDSA.Signature,
   ECDSA.sign,
   signS,
-  ECDSA.verify,
+  verify,
 
   toPublic,
   extractPoint,
@@ -70,6 +70,10 @@ extractPoint pubkey = (x,y)
   where
     ECC.Point x y = ECDSA.public_q pubkey 
 
--- | Serializes a msg before signing
+-- | Serializes a msg and SHA3_256 hashes it before signing
 signS :: S.Serialize a => ECDSA.PrivateKey -> a -> IO ECDSA.Signature
 signS pk msg = ECDSA.sign pk Hash.SHA3_256 (S.encode msg)
+
+-- | Verify a signature of a SHA3_256 encoded ByteString 
+verify :: ECDSA.PublicKey -> ECDSA.Signature -> ByteString -> Bool
+verify pubKey sig = ECDSA.verify Hash.SHA3_256 pubKey sig 

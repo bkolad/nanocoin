@@ -87,7 +87,7 @@ genesisBlock = Block
 -- Block Hashing
 -------------------------------------------------------------------------------
 
--- |
+-- | Hash a block header, to be used as the prevHash field in Block
 hashBlockHeader :: BlockHeader -> ByteString 
 hashBlockHeader BlockHeader{..} = Hash.getHash $ Hash.sha256 $ BS.concat
   [ rawAddress origin, previousHash, S.encode transactions, B8.pack (show nonce) ]
