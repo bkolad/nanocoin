@@ -1,7 +1,19 @@
-Nanochain
+Nanocoin
 =========
 
-A minimal viable blockchain to demonstrate simple blockchain principles.
+Cryptocurrencies are seeing an large uptake in the interest of the general 
+public. With over 100 cryptocurrency tokens (cryptotokens) reaching a marketcap 
+of 10mil or more, the total marketcap of cryptotokens is close to 100bil.
+Nanocoin is a valueless cryptotoken written in Haskell that provides a store of 
+value representing literally nothing in the world. This talk will outline the
+cryptographic and software components that define current public,
+unpermissioned, distributed state machines using Proof of Work consensus
+algorithms (e.g. Bitcoin, ZCash). Furthermore, Nanocoin exhibits the benefits 
+gained by using Haskell to manage software complexity and build nontrivial software
+projects effectively. The talk will be split into two parts: the first an overview 
+of cryptotokens and their underlying mathematical and software engineering 
+components, and second the specifics of the Nanocoin codebase, and how it
+implements the neceessary cryptotoken components.
 
 Project goals:
 
@@ -76,7 +88,7 @@ to add `localhost:3003` as a peer.
 Consensus (Proof Of Work)
 -------------------------
 
-Nanochain uses a simple proof of work (PoW) approach to chain concensus: To mine
+Nanocoin uses a simple proof of work (PoW) approach to chain concensus: To mine
 a block on the chain, a node must compute a nonce such that that resulting hash
 of the block being mined begins with a number of 0's equal to `round(ln(n))`
 where `n` is the length of the current chain. For this PoW implementation the

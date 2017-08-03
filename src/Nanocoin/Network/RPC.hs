@@ -50,3 +50,5 @@ rpcServer nodeState = do
       peers <- getNodePeers nodeState
       json peers
 
+    get "/balance" $ do
+      json ("TODO" :: Text)
