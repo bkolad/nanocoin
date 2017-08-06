@@ -8,8 +8,12 @@ module Nanocoin.Network.Node (
   getNodeChain,
   modifyNodeChain_,
   setNodeChain,
+  
   addBlockNodeChain,
   getLatestBlock,
+  
+  getLedger,
+  setLedger,
   
   getNodePeers,
   getPortsInUse,
@@ -21,6 +25,7 @@ import Control.Concurrent.MVar (MVar)
 import Data.Aeson (ToJSON(..)) 
 
 import qualified Nanocoin.Block as Block
+import qualified Nanocoin.Ledger as Ledger 
 import qualified Nanocoin.Network.Message as Msg
 import qualified Nanocoin.Network.Multicast as M
 import qualified Nanocoin.Network.Peer as Peer 
@@ -34,16 +39,16 @@ data NodeState = NodeState
   , nodeKeys     :: Key.KeyPair
   , nodeSender   :: Msg.MsgSender 
   , nodeReceiver :: Msg.MsgReceiver
-  , nodeBalance  :: MVar Int 
+  , nodeLedger   :: MVar Ledger.Ledger 
   } 
 
 initNodeState :: Peer.Peer -> MVar [Peer.Peer] -> IO NodeState
 initNodeState self peersMV = do
   let (Peer.Peer hn p2pPort _) = self
-  chainMV <- newMVar [Block.genesisBlock]
-  keyPair <- Key.newKeyPair 
+  chainMV  <- newMVar [Block.genesisBlock]
+  keyPair  <- Key.newKeyPair 
   (receiver, sender) <- M.initMulticast hn p2pPort 65536
-  balMV   <- newMVar 0
+  ledgerMV <- newMVar mempty
   return NodeState 
     { nodeConfig   = self
     , nodeChain    = chainMV
@@ -51,7 +56,7 @@ initNodeState self peersMV = do
     , nodeKeys     = keyPair 
     , nodeSender   = sender
     , nodeReceiver = receiver
-    , nodeBalance  = balMV 
+    , nodeLedger   = ledgerMV 
     }
 
 -------------------------------------------------------------------------------
@@ -73,6 +78,7 @@ modifyNodeChain_
   -> m ()
 modifyNodeChain_ nodeState = modifyNodeState_ nodeState nodeChain 
 
+-- | Warning: Unsafe replace chain. Use 'setNodeChain' to safely update chain
 setNodeChain' :: MonadIO m => NodeState -> Block.Blockchain -> m ()
 setNodeChain' nodeState chain = modifyNodeChain_ nodeState (pure . const chain) 
 
@@ -93,11 +99,13 @@ addBlockNodeChain nodeState newBlock =
       Left err -> putStrLn err >> return chain
       Right newChain -> return newChain
 
-setBalance :: MonadIO m => NodeState -> Int -> m ()
-setBalance nodeState bal = modifyNodeState_ nodeState nodeBalance (pure . const bal) 
+getLedger :: MonadIO m => NodeState -> m Ledger.Ledger
+getLedger = readMVar' . nodeLedger
 
-addBalance :: MonadIO m => NodeState -> Int -> m ()
-addBalance nodeState amnt = modifyNodeState_ nodeState nodeBalance (pure . (+) amnt)
+setLedger :: MonadIO m => NodeState -> Ledger.Ledger -> m ()
+setLedger nodeState ledger = 
+  modifyNodeState_ nodeState nodeLedger $ \_ -> 
+    putText "Updating Ledger..." >> pure ledger
 
 ------------------------------------------------------------------------------- 
 -- NodeState Querying

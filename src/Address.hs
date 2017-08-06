@@ -12,7 +12,7 @@ import Protolude
 
 import Crypto.Number.Serialize (i2osp)
 
-import Data.Aeson (ToJSON(..), Value(..))
+import Data.Aeson 
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString.Base58 as B58
 import qualified Data.Serialize as S
@@ -30,6 +30,10 @@ newtype Address = Address { rawAddress :: ByteString }
 instance ToJSON Address where
   toJSON (Address bs) = Data.Aeson.String (decodeUtf8 bs)
 
+-- XXX UNSAFE decode
+instance FromJSON Address where
+  parseJSON (String s) = pure $ Address $ encodeUtf8 s
+
 -- | UNSAFE: Does not validate ByteString supplied
 mkAddress :: ByteString -> Address
 mkAddress = Address . b58
@@ -41,25 +45,26 @@ deriveAddress :: Key.PublicKey -> Address
 deriveAddress pub = Address (b58 addr)
   where
     (x, y) = Key.extractPoint pub
-    addr   = BA.convert $ Hash.rawHash $ deriveHash pstr
-    pstr   = (i2osp x) <> (i2osp y)
+    addr   = BA.convert $ deriveHash pstr
+    pstr   = (i2osp x) <> ";" <> (i2osp y)
 
 -- | Address derivation function, maps a hash of a EC point to a unique,
 -- irreversible identity that uniquely defines a participant in the network and
 -- any participant can verify integrity of it's coherence to a public key.
 --
 -- > addrHash(n) = sha256(sha256(ripemd160(sha256(n))))
-deriveHash :: ByteString -> Hash.Hash a 
-deriveHash pstr = Hash.sha256 
+deriveHash :: ByteString -> ByteString
+deriveHash pstr = Hash.sha256Raw'
                 $ Hash.sha256Raw' 
                 $ Hash.ripemd160Raw 
                 $ Hash.sha256Raw' pstr
 
 -- | Validate whether an address is a well-formed B58 encoded hash.
 validateAddress :: Address -> Bool
-validateAddress (Address addr) = case unb58 addr of
-  Nothing  -> False
-  Just sha -> Hash.validateSha' sha
+validateAddress (Address addr) = 
+  case unb58 addr of
+    Nothing  -> False
+    Just sha -> Hash.validateSha' sha
   
 -------------------------------------------------------------------------------
 -- Base58 Encoding

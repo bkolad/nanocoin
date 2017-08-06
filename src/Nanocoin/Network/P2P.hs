@@ -86,6 +86,8 @@ handleResponse nodeState newChain = do
       | length newChain == 1 = return $ Just Msg.QueryBlockchain
       | otherwise = do 
           Node.setNodeChain nodeState newChain 
+          -- XXX Apply transactions to ledger here
+          -- Node.setLedger nodeState latestBlockRec
           return $ Just $ Msg.RespLatestBlock latestBlockRec
 
 ----------------------------------------------------------------

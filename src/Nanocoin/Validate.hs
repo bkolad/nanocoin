@@ -27,22 +27,22 @@ validateBlock
   :: Ledger 
   -> Block 
   -> Either InvalidBlock ()
-validateBlock = undefined
+validateBlock _ _ = Right () -- XXX
 
 validateTransaction 
   :: Ledger 
   -> Transaction 
   -> Either InvalidTransaction ()
-validateTransaction = undefined
+validateTransaction _ _ = Right () -- XXX 
 
 verifyBlockSignature 
   :: Ledger 
   -> Block 
   -> Either InvalidBlock ()
-verifyBlockSignature = undefined
+verifyBlockSignature _ _ = Right () -- XXX 
 
 verifyTransactionSignature
   :: Ledger
   -> Block
   -> Either InvalidTransaction ()
-verifyTransactionSignature = undefined
+verifyTransactionSignature _ _ = Right () -- XXX 

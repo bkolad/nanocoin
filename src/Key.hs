@@ -15,23 +15,32 @@ module Key (
 
   toPublic,
   extractPoint,
+  mkPublicKey,
+
+  -- **Serialization
+  hexPub,
+  dehexPub,
+  
+  putInteger,
+  getInteger,
   
 ) where
 
 import Protolude
 
+import qualified Crypto.Number.Basic as CNB 
+import qualified Crypto.Number.Serialize as CNS 
 import qualified Crypto.PubKey.ECC.ECDSA as ECDSA 
 import qualified Crypto.PubKey.ECC.Generate as ECC
 import qualified Crypto.PubKey.ECC.Prim as ECC
 import qualified Crypto.PubKey.ECC.Types as ECC
 
+import qualified Data.ByteArray as BA
+import qualified Data.ByteArray.Encoding as BAE
+import qualified Data.ByteString as BS
 import qualified Data.Serialize as S
 
 import qualified Hash
-
--- | Oh no, Orphan instance! Fuck it...
-deriving instance Generic ECDSA.Signature
-instance S.Serialize ECDSA.Signature
 
 -- | All ECC is done using curve SECP256K1
 sec_p256k1 :: ECC.Curve
@@ -65,6 +74,10 @@ toPublic key = ECDSA.PublicKey curve point
     point  = ECC.pointMul curve (ECDSA.private_d key) g
     g      = ECC.ecc_g curve'
 
+-- | UNSAFE: Does not validate (x,y) are valid coordinates to secp256k1
+mkPublicKey :: (Integer, Integer) -> ECDSA.PublicKey
+mkPublicKey (x,y) = ECDSA.PublicKey sec_p256k1 $ ECC.Point x y
+
 extractPoint :: ECDSA.PublicKey -> (Integer, Integer)
 extractPoint pubkey = (x,y)
   where
@@ -76,4 +89,47 @@ signS pk msg = ECDSA.sign pk Hash.SHA3_256 (S.encode msg)
 
 -- | Verify a signature of a SHA3_256 encoded ByteString 
 verify :: ECDSA.PublicKey -> ECDSA.Signature -> ByteString -> Bool
-verify pubKey sig = ECDSA.verify Hash.SHA3_256 pubKey sig 
+verify = ECDSA.verify Hash.SHA3_256
+
+----------------------------------------------------------------
+-- Serialization
+----------------------------------------------------------------
+
+-- | Hex encoding of public key
+-- XXX Explain encoding
+hexPub :: ECDSA.PublicKey -> ByteString 
+hexPub pubKey = Hash.base16 
+    (CNS.i2ospOf_ 32 x <> CNS.i2ospOf_ 32 y :: ByteString)
+  where
+      (x, y) = extractPoint pubKey
+
+-- | Dehex public key
+dehexPub :: ByteString -> Either Text ECDSA.PublicKey 
+dehexPub bs = do
+  bs' <- first toS $ BAE.convertFromBase BAE.Base16 bs
+  let (xs, ys) = BS.splitAt 32 bs'
+  let point = ECC.Point (CNS.os2ip xs) (CNS.os2ip ys)
+  if ECC.isPointValid sec_p256k1 point 
+    then Right $ ECDSA.PublicKey sec_p256k1 point
+    else Left "dehexPub: Invalid public key point"
+
+-- | Oh no, Orphan instances!
+deriving instance Generic ECDSA.Signature
+instance S.Serialize ECDSA.Signature
+
+-- | Serialize an Integer
+putInteger :: S.Putter Integer 
+putInteger n = do
+  let nBytes = CNB.numBytes n
+  S.putInt64le $ fromIntegral nBytes
+  S.putByteString $ CNS.i2ospOf_ nBytes n 
+
+-- | Deserialize an Integer
+-- UNSAFE: vulnerable to long Integer injection attacks
+getInteger :: S.Get Integer
+getInteger = do
+  nBytes <- fromIntegral <$> S.getInt64le 
+  CNS.os2ip <$> S.getByteString nBytes 
+
+encodeInteger :: Integer -> ByteString
+encodeInteger = S.runPut . putInteger

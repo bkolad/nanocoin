@@ -129,6 +129,9 @@ mineBlock prevBlock privKey txs = do
     origin'     = deriveAddress (Key.toPublic privKey)
     blockHeader = proofOfWork index' initBlockHeader
 
+    now :: IO Integer
+    now = round `fmap` getPOSIXTime 
+
 proofOfWork 
   :: Int         -- ^ Difficulty measured by block index
   -> BlockHeader -- ^ Header to hash with nonce parameter
@@ -196,9 +199,6 @@ replaceChain oldChain newChain =
       | length newChain > length oldChain -> Nothing
       | otherwise -> Just "replaceChain: invalid chain"
     Just err -> Just err 
-
-now :: IO Integer
-now = round `fmap` getPOSIXTime 
 
 -------------------------------------------------------------------------------
 -- Serialization
