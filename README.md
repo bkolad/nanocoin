@@ -18,12 +18,13 @@ implements the neceessary cryptotoken components.
 Project goals:
 
 * Well-documented.
-* Low-line count.
 * Low-dependencies.
 * Using classic proof-of-work.
 * Basic P2P using UDP chatter.
 * Supports chain reconfiguration.
-* No encryption or accounts.
+* Basic ECDSA Block/Transaction signatures & validation
+* Transfer & CreateAccount Transactions
+* Simple Protocol
 * In-memory.
 
 Enabling Multicast
