@@ -109,7 +109,7 @@ mineBlock
   -> m Block
 mineBlock prevBlock privKey txs = do
     timestamp' <- liftIO now
-    signature' <- liftIO $ Key.signS privKey (hashBlockHeader blockHeader)   
+    signature' <- liftIO $ Key.sign privKey (hashBlockHeader blockHeader)   
     return Block 
       { index     = index' 
       , header    = blockHeader

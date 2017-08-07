@@ -3,8 +3,12 @@
 
 module Nanocoin.Ledger (
   Ledger,
-  addAddress,
-  updateBalance,
+
+  addAccount,
+  AddAccountError,
+
+  transfer,
+  TransferError,
 ) where
 
 import Protolude
@@ -14,8 +18,11 @@ import qualified Data.Map as Map
 import qualified Data.Serialize as S 
 
 import Address
+import qualified Key 
 
 type Balance = Int
+
+type Account = (Key.PublicKey, Balance)
 
 data TransferError 
   = InvalidSender Address
@@ -23,26 +30,40 @@ data TransferError
   | InsufficientBalance Address Balance 
   deriving (Eq, Show) 
 
+data AddAccountError = AccountExists Address 
+  deriving (Eq, Show)
+
 -- | Datatype storing the holdings of addresses
 newtype Ledger = Ledger
-  { unLedger :: Map Address Balance 
-  } deriving (Eq, Show, Generic, S.Serialize, Monoid)
+  { unLedger :: Map Address Account
+  } deriving (Eq, Show, Generic, Monoid)
 
 emptyLedger :: Ledger
 emptyLedger = Ledger mempty
 
-type Transition = Ledger -> Ledger
-
-addAddress :: Address -> Transition
-addAddress addr = updateBalance addr 0
-
 lookupBalance :: Address -> Ledger -> Maybe Balance
-lookupBalance addr = Map.lookup addr . unLedger 
+lookupBalance addr = fmap snd . Map.lookup addr . unLedger 
 
-updateBalance :: Address -> Int -> Transition
-updateBalance addr amount = 
-  Ledger . Map.insert addr amount . unLedger 
+-- | Add an integer to an account's existing balance
+addBalance :: Address -> Int -> Ledger -> Ledger 
+addBalance addr amount = 
+    Ledger . Map.adjust addBalance' addr . unLedger 
+  where 
+    addBalance' = second (+amount)
 
+-- | Add an account with 0 balance to the Ledger
+addAccount :: Key.PublicKey -> Ledger -> Either AddAccountError Ledger 
+addAccount pubKey ledger = 
+    case lookupBalance newAddr ledger of
+      Nothing  -> Right $ Ledger $ Map.insert newAddr newAcc ledger'
+      Just acc -> Left $ AccountExists newAddr 
+  where
+    ledger' = unLedger ledger
+
+    newAddr = Address.deriveAddress pubKey
+    newAcc  = (pubKey, 0)
+
+-- | Transfer Nanocoin from one account to another
 transfer 
   :: Ledger 
   -> Address
@@ -62,8 +83,6 @@ transfer ledger fromAddr toAddr amount = do
 
   if senderBal < amount 
     then Left $ InsufficientBalance fromAddr senderBal
-    else do
-      let newSenderBal = senderBal - amount
-      let newRecvrBal = recvrBal + amount
-      Right $ updateBalance toAddr newRecvrBal $ 
-        updateBalance fromAddr newSenderBal ledger
+    else Right $ 
+      addBalance toAddr amount $ 
+        addBalance fromAddr (-amount) ledger

@@ -6,11 +6,13 @@ module Nanocoin.Validate (
 
 import Protolude
 
-import Key
+import qualified Key
 
 import Nanocoin.Block
-import Nanocoin.Ledger
+import Nanocoin.Ledger (Ledger)
 import Nanocoin.Transaction
+
+import qualified Nanocoin.Ledger as Ledger
 
 data InvalidBlock 
   = InvalidBlockSignature
@@ -19,9 +21,9 @@ data InvalidBlock
   | InvalidBlockTx InvalidTransaction
 
 data InvalidTransaction
-  = InvalidTxSignature
-  | InvalidTxTimestamp
-  | InvalidTxTransfer
+  = InvalidTxSignature Key.Signature 
+  | InvalidTransfer Ledger.TransferError
+  | InvalidAccount Ledger.AddAccountError
 
 validateBlock 
   :: Ledger 

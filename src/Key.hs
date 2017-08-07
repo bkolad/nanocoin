@@ -9,8 +9,7 @@ module Key (
   newKeyPair,
 
   ECDSA.Signature,
-  ECDSA.sign,
-  signS,
+  sign,
   verify,
 
   toPublic,
@@ -21,6 +20,8 @@ module Key (
   hexPub,
   dehexPub,
   
+  putPublicKey,
+  getPublicKey,
   putInteger,
   getInteger,
   
@@ -83,9 +84,9 @@ extractPoint pubkey = (x,y)
   where
     ECC.Point x y = ECDSA.public_q pubkey 
 
--- | Serializes a msg and SHA3_256 hashes it before signing
-signS :: S.Serialize a => ECDSA.PrivateKey -> a -> IO ECDSA.Signature
-signS pk msg = ECDSA.sign pk Hash.SHA3_256 (S.encode msg)
+-- | SHA3_256 hashes a msg before signing
+sign :: ECDSA.PrivateKey -> ByteString -> IO ECDSA.Signature
+sign pk = ECDSA.sign pk Hash.SHA3_256 
 
 -- | Verify a signature of a SHA3_256 encoded ByteString 
 verify :: ECDSA.PublicKey -> ECDSA.Signature -> ByteString -> Bool
@@ -116,6 +117,18 @@ dehexPub bs = do
 -- | Oh no, Orphan instances!
 deriving instance Generic ECDSA.Signature
 instance S.Serialize ECDSA.Signature
+
+putPublicKey :: S.Putter ECDSA.PublicKey
+putPublicKey pubKey = do 
+  let (r,s) = Key.extractPoint pubKey
+  Key.putInteger r
+  Key.putInteger s
+
+-- | UNSAFE: Does not check the validity of the point
+getPublicKey = do
+  r <- Key.getInteger
+  s <- Key.getInteger
+  pure $ Key.mkPublicKey (r,s)
 
 -- | Serialize an Integer
 putInteger :: S.Putter Integer 
