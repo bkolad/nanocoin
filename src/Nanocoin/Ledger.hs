@@ -6,6 +6,7 @@ module Nanocoin.Ledger (
 
   addAccount,
   AddAccountError,
+  lookupAccount,
 
   transfer,
   TransferError,
@@ -41,8 +42,8 @@ newtype Ledger = Ledger
 emptyLedger :: Ledger
 emptyLedger = Ledger mempty
 
-lookupBalance :: Address -> Ledger -> Maybe Balance
-lookupBalance addr = fmap snd . Map.lookup addr . unLedger 
+lookupAccount :: Address -> Ledger -> Maybe Account
+lookupAccount addr = Map.lookup addr . unLedger 
 
 -- | Add an integer to an account's existing balance
 addBalance :: Address -> Int -> Ledger -> Ledger 
@@ -54,9 +55,9 @@ addBalance addr amount =
 -- | Add an account with 0 balance to the Ledger
 addAccount :: Key.PublicKey -> Ledger -> Either AddAccountError Ledger 
 addAccount pubKey ledger = 
-    case lookupBalance newAddr ledger of
-      Nothing  -> Right $ Ledger $ Map.insert newAddr newAcc ledger'
-      Just acc -> Left $ AccountExists newAddr 
+    case lookupAccount newAddr ledger of
+      Nothing -> Right $ Ledger $ Map.insert newAddr newAcc ledger'
+      Just _  -> Left $ AccountExists newAddr 
   where
     ledger' = unLedger ledger
 
@@ -72,14 +73,14 @@ transfer
   -> Either TransferError Ledger
 transfer ledger fromAddr toAddr amount = do
   senderBal <-
-    case lookupBalance fromAddr ledger of
+    case lookupAccount fromAddr ledger of
       Nothing -> Left $ InvalidSender fromAddr
-      Just bal -> Right bal 
+      Just acc -> Right $ snd acc 
  
   recvrBal <- 
-    case lookupBalance fromAddr ledger of
+    case lookupAccount fromAddr ledger of
       Nothing -> Left $ InvalidReceiver toAddr
-      Just bal -> Right bal 
+      Just acc -> Right $ snd acc 
 
   if senderBal < amount 
     then Left $ InsufficientBalance fromAddr senderBal

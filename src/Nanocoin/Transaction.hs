@@ -1,9 +1,16 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE RecordWildCards#-}
 
 module Nanocoin.Transaction (
-  Transaction(..)
+  Transaction(..),
+  TransactionHeader(..),
+  Transfer(..),
+  CreateAccount(..),
+ 
+  -- ** Validation
+  InvalidTransaction(..),
+  validateTransaction
+
 ) where
 
 import Protolude
@@ -16,10 +23,12 @@ import qualified Data.Serialize as S
 
 import Address (Address, rawAddress, deriveAddress)
 import Hash (Hash)
+import Nanocoin.Ledger (Ledger)
+
 import qualified Hash 
 import qualified Key 
+import qualified Nanocoin.Ledger as Ledger
 
-import Nanocoin.Ledger (Ledger)
 
 type Timestamp = Integer
 
@@ -81,6 +90,41 @@ transferTx (Key.KeyPair pubKey privKey) recipient amnt =
   where
     transfer' = Transfer issuer recipient amnt 
     issuer = Address.deriveAddress pubKey
+
+-------------------------------------------------------------------------------
+-- Validation
+-------------------------------------------------------------------------------
+
+data InvalidTransaction
+  = InvalidTxSignature Text 
+  | InvalidTransfer Ledger.TransferError
+  | InvalidAccount Ledger.AddAccountError
+  | InvalidTranferIssuer Address
+
+verifyTxSignature 
+  :: Ledger
+  -> Transaction 
+  -> Either InvalidTransaction () 
+verifyTxSignature l tx = do 
+  let txHeader = header tx 
+  pubKey <- case txHeader of
+    TxAccount (CreateAccount pubKey) -> Right pubKey 
+    TxTransfer (Transfer issuer _ _) -> 
+      case Ledger.lookupAccount issuer l of
+        Nothing -> Left $ InvalidTranferIssuer issuer
+        Just acc -> Right $ fst acc
+  case S.decode (signature tx) of
+    Left err -> Left $ InvalidTxSignature (toS err)
+    Right sig -> do
+      let validSig = Key.verify pubKey sig (S.encode txHeader)
+      unless validSig $
+        Left $ InvalidTxSignature "Failed to verify transaction signature"
+
+validateTransaction 
+  :: Ledger 
+  -> Transaction 
+  -> Either InvalidTransaction ()
+validateTransaction _ _ = Right () -- XXX 
 
 -------------------------------------------------------------------------------
 -- Serialization

@@ -14,11 +14,16 @@ module Nanocoin.Block (
   genesisBlock,
 
   proofOfWork,
+  checkProofOfWork,
   mineBlock,
   addBlock,
   getLatestBlock,
   mineAndAddBlock,
   
+  -- ** Validation
+  InvalidBlock(..),
+  validateBlock,
+
   isValidChain,
   replaceChain,
   emptyBlockchain,
@@ -44,11 +49,13 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T 
 
 import Address
+import Nanocoin.Ledger 
+import Nanocoin.Transaction (Transaction) 
+
 import qualified Hash 
 import qualified Key 
-
-import Nanocoin.Transaction (Transaction) 
-import qualified Nanocoin.Transaction 
+import qualified Nanocoin.Transaction as T
+import qualified Nanocoin.Ledger as Ledger
 
 type Index      = Int 
 type Timestamp  = Integer
@@ -97,6 +104,45 @@ hashBlock :: Block -> ByteString
 hashBlock = hashBlockHeader . header
 
 -------------------------------------------------------------------------------
+-- Validation
+-------------------------------------------------------------------------------
+
+data InvalidBlock 
+  = InvalidBlockSignature Text
+  | InvalidBlockIndex 
+  | InvalidBlockHash
+  | InvalidPrevBlockHash
+  | InvalidOriginAddress Address
+  | InvalidBlockTx T.InvalidTransaction
+
+verifyBlockSignature 
+  :: Ledger 
+  -> Block 
+  -> Either InvalidBlock () 
+verifyBlockSignature l b =
+  let hdr = header b in
+  case Ledger.lookupAccount (origin hdr) l of
+    Nothing -> Left $ InvalidOriginAddress (origin hdr) 
+    Just acc -> case S.decode (signature b) of
+      Left err -> Left $ InvalidBlockSignature (toS err)
+      Right sig -> do
+        let validSig = Key.verify (fst acc) sig (S.encode hdr) 
+        unless validSig $ 
+          Left $ InvalidBlockSignature "Verify failed"
+
+validateBlock 
+  :: Ledger 
+  -> Block 
+  -> Block
+  -> Either InvalidBlock ()
+validateBlock ledger prevBlock block  
+  | index block /= index prevBlock + 1 = Left InvalidBlockIndex 
+  | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
+  | not (checkProofOfWork block) = Left InvalidBlockHash
+  | otherwise = verifyBlockSignature ledger block
+
+
+-------------------------------------------------------------------------------
 -- Block/chain operations 
 -------------------------------------------------------------------------------
 
@@ -109,7 +155,8 @@ mineBlock
   -> m Block
 mineBlock prevBlock privKey txs = do
     timestamp' <- liftIO now
-    signature' <- liftIO $ Key.sign privKey (hashBlockHeader blockHeader)   
+    signature' <- liftIO $ -- Sign the serialized block header 
+      Key.sign privKey (S.encode blockHeader) 
     return Block 
       { index     = index' 
       , header    = blockHeader
@@ -138,15 +185,25 @@ proofOfWork
   -> BlockHeader 
 proofOfWork idx blockHeader = blockHeader { nonce = calcNonce 0 }  
   where
-    dbits = round $ logBase (2 :: Float) $ fromIntegral idx 
-    prefix = toS $ replicate dbits '0' 
+    difficulty = calcDifficulty idx
+    prefix = toS $ replicate difficulty '0' 
 
     calcNonce n
       | prefix' == prefix = n
       | otherwise = calcNonce $ n + 1
       where
         headerHash = hashBlockHeader (blockHeader { nonce = n })
-        prefix' = T.take dbits $ Hash.encode64 headerHash
+        prefix' = BS.take difficulty headerHash
+   
+calcDifficulty :: Int -> Int
+calcDifficulty = round . logBase (2 :: Float) . fromIntegral 
+
+checkProofOfWork :: Block -> Bool
+checkProofOfWork block =
+    BS.isPrefixOf prefix $ hashBlock block 
+  where
+    difficulty = calcDifficulty $ index block 
+    prefix = toS $ replicate difficulty '0' 
 
 isValidBlock :: Block -> Block -> Maybe Text
 isValidBlock prevBlock newBlock
