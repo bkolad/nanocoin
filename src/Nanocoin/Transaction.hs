@@ -12,10 +12,12 @@ module Nanocoin.Transaction (
   transferTx,
 
   -- ** Validation
-  InvalidTransaction(..),
+  InvalidTx(..),
+  InvalidTxField(..),
   verifyTxSignature,
   applyTransaction,
-  applyTransactions
+  applyTransactions,
+  invalidTxs,
 
 ) where
 
@@ -96,17 +98,20 @@ transferTx (pubKey, privKey) recipient amnt =
 -- Validation & Application of Transactions
 -------------------------------------------------------------------------------
 
-data InvalidTransaction
+data InvalidTxField 
   = InvalidTxSignature Text
   | InvalidTransfer Ledger.TransferError
   | InvalidAccount Ledger.AddAccountError
   | InvalidTranferIssuer Address
   deriving (Show, Eq)
 
+data InvalidTx = InvalidTx Transaction InvalidTxField
+  deriving (Show, Eq)
+
 verifyTxSignature
   :: Ledger
   -> Transaction
-  -> Either InvalidTransaction ()
+  -> Either InvalidTx ()
 verifyTxSignature l tx = do
   let txHeader = header tx
   pubKey <- case txHeader of
@@ -115,29 +120,31 @@ verifyTxSignature l tx = do
     -- To transfer, the tx hash must be signed by the issuer
     TxTransfer (Transfer issuer _ _) ->
       case Ledger.lookupAccount issuer l of
-        Nothing -> Left $ InvalidTranferIssuer issuer
+        Nothing -> Left $ mkInvalidTx $ InvalidTranferIssuer issuer
         Just acc -> Right $ fst acc
   case S.decode (signature tx) of
-    Left err -> Left $ InvalidTxSignature (toS err)
+    Left err -> Left $ mkInvalidTx $ InvalidTxSignature (toS err)
     Right sig -> do
       let txHash = hashTxHeader txHeader
       let validSig = Key.verify pubKey sig txHash
-      unless validSig $
-        Left $ InvalidTxSignature "Failed to verify transaction signature"
+      unless validSig $ Left $ mkInvalidTx $
+        InvalidTxSignature "Failed to verify transaction signature"
+  where
+    mkInvalidTx = InvalidTx tx 
 
-type ApplyM = State [InvalidTransaction]
+type ApplyM = State [InvalidTx]
 
-throwError :: InvalidTransaction -> ApplyM ()
+throwError :: InvalidTx -> ApplyM ()
 throwError itx = modify (itx:)
 
-runApplyM :: ApplyM a -> (a,[InvalidTransaction])
+runApplyM :: ApplyM a -> (a,[InvalidTx])
 runApplyM = flip runState []
 
 -- | Applies a list of transactions to the ledger
 applyTransactions
   :: Ledger
   -> [Transaction]
-  -> (Ledger,[InvalidTransaction])
+  -> (Ledger,[InvalidTx])
 applyTransactions ledger =
   runApplyM . foldM applyTransaction ledger
 
@@ -147,24 +154,29 @@ applyTransaction
   -> Transaction
   -> ApplyM Ledger
 applyTransaction ledger tx = do
+
   -- Verify Transaction Signature
   case verifyTxSignature ledger tx of
     Left err -> throwError err
     Right _  -> pure ()
+ 
   -- Apply transaction to world state
   case header tx of
     TxAccount (CreateAccount pubkey) ->
       case Ledger.addAccount pubkey ledger of
         Left err -> do
-          throwError $ InvalidAccount err
+          throwError $ InvalidTx tx $ InvalidAccount err
           pure ledger
         Right ledger' -> pure ledger'
     TxTransfer (Transfer from to amnt) ->
       case Ledger.transfer ledger from to amnt of
         Left err -> do
-          throwError $ InvalidTransfer err
+          throwError $ InvalidTx tx $ InvalidTransfer err
           pure ledger
         Right ledger' -> pure ledger'
+
+invalidTxs :: [InvalidTx] -> [Transaction]
+invalidTxs itxs = flip map itxs $ \(InvalidTx tx _) -> tx
 
 -------------------------------------------------------------------------------
 -- Serialization

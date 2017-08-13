@@ -24,17 +24,16 @@ import qualified Nanocoin.Network.RPC as RPC
 -- the blockchain, and invokes a p2p server and an http server. 
 initNode :: Peer.Peer -> IO ()
 initNode peer = do
-    nodeKeys <- newKeyPair
-    nodeState <- Node.initNodeState peer nodeKeys 
-    forkIO $ P2P.p2p nodeState 
-    joinNetwork (Node.nodeSender nodeState) nodeKeys
-    RPC.rpcServer nodeState
+  nodeKeys <- newKeyPair
+  nodeState <- Node.initNodeState peer nodeKeys 
+  forkIO $ P2P.p2p nodeState 
+  joinNetwork (Node.nodeSender nodeState) nodeKeys
+  RPC.rpcServer nodeState
 
 -- | To Join the network, just send a valid CreateAccount transaction
 joinNetwork :: Msg.MsgSender -> KeyPair -> IO ()
 joinNetwork nodeSender keys = do 
   -- Create account with node keys and broadcast create account 
-  tx <- T.addAccountTx keys 
-  nodeSender $ Msg.NewTransaction tx
+  nodeSender . Msg.TransactionMsg =<< T.addAccountTx keys  
   -- Query the network for the latest block
-  nodeSender Msg.QueryLatestBlock 
+  nodeSender $ Msg.QueryBlockMsg 1

@@ -1,13 +1,15 @@
 
-
 module Nanocoin.Network.RPC (
   rpcServer
 ) where
 
-import Protolude hiding (get)
+import Protolude hiding (get, intercalate)
 
 import Data.Aeson hiding (json)
+import Data.Text (intercalate) 
 import Web.Scotty
+
+import qualified Data.Map as Map
 
 import Address
 import Nanocoin.Network.Node
@@ -15,8 +17,8 @@ import Nanocoin.Network.Peer
 
 import qualified Address
 import qualified Key
-import qualified Nanocoin.Block as Block
-import qualified Nanocoin.MemPool as MemPool
+import qualified Nanocoin.Block as B
+import qualified Nanocoin.MemPool as MP
 import qualified Nanocoin.Transaction as T
 import qualified Nanocoin.Network.Message as Msg
 
@@ -54,18 +56,31 @@ rpcServer nodeState = do
     --------------------------------------------------
 
     get "/mineBlock" $ do
-      chain <- getBlockChain nodeState
-      let privKey = snd $ nodeKeys nodeState
-      txs <- MemPool.unMemPool <$> getMemPool nodeState
-      mRes <- Block.mineAndAddBlock chain privKey txs
-      case mRes of
-        Left err -> text $ toS err
-        Right (newBlock, newChain) -> do
-          putStrLn $ "Adding block with hash: " <>
-            Block.encode64 (Block.hashBlock newBlock)
-          setBlockChain nodeState newChain
-          liftIO $ p2pSender $ Msg.RespLatestBlock newBlock
-          json newBlock
+      -- Attempt to mine block
+      mPrevBlock <- getLatestBlock nodeState
+      case mPrevBlock of
+        Nothing -> text "Cannot mine block without a genesis block"
+        Just prevBlock -> do
+          let privKey = snd $ nodeKeys nodeState
+          txs <- MP.unMemPool <$> getMemPool nodeState
+          block <- B.mineBlock prevBlock privKey txs
+          
+          -- Are block transactions valid?
+          ledger <- getLedger nodeState
+          case B.validateAndApplyBlock ledger prevBlock block of
+            Left err -> text $ show err
+            Right (_, invalidTxErrs) 
+              -- If block & txs valid, broadcast block
+              | null invalidTxErrs -> do
+                  putText $ "Generated block with hash:\n\t" 
+                    <> decodeUtf8 (B.hashBlock block)
+                  liftIO $ p2pSender $ Msg.BlockMsg block 
+                  json block 
+              -- If invalid, remove invalid txs from mempool
+              | otherwise -> do
+                  let invalidTxs = T.invalidTxs invalidTxErrs
+                  modifyMemPool_ nodeState $ MP.removeTransactions invalidTxs
+                  json $ Map.fromList $ zip ([1..] :: [Int]) invalidTxs 
 
     get "/transfer/:toAddr/:amount" $ do
       toAddr <- mkAddress <$> param "toAddr"
@@ -74,7 +89,7 @@ rpcServer nodeState = do
         then do
           let keys = nodeKeys nodeState
           tx <- liftIO $ T.transferTx keys toAddr amount
-          liftIO . p2pSender $ Msg.NewTransaction tx
+          liftIO . p2pSender $ Msg.TransactionMsg tx
           json tx
         else
           text "Invalid Address Supplied"

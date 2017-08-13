@@ -16,17 +16,13 @@ module Nanocoin.Block (
   proofOfWork,
   checkProofOfWork,
   mineBlock,
-  addBlock,
   getLatestBlock,
-  mineAndAddBlock,
   
   -- ** Validation
   InvalidBlock(..),
   validateBlock,
-
-  isValidChain,
-  replaceChain,
-  emptyBlockchain,
+  applyBlock,
+  validateAndApplyBlock,
 
   Hash.encode64,
   Hash.decode64
@@ -113,7 +109,8 @@ data InvalidBlock
   | InvalidBlockHash
   | InvalidPrevBlockHash
   | InvalidOriginAddress Address
-  | InvalidBlockTxs [T.InvalidTransaction]
+  | InvalidBlockTxs [T.InvalidTx]
+  deriving (Show, Eq)
 
 verifyBlockSignature 
   :: Ledger 
@@ -140,18 +137,22 @@ validateBlock ledger prevBlock block
   | index block /= index prevBlock + 1 = Left InvalidBlockIndex 
   | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
   | not (checkProofOfWork block) = Left InvalidBlockHash
-  | otherwise = do
-      verifyBlockSignature ledger block
-      let invalidTxs = snd $ applyBlock ledger block
-      if null invalidTxs 
-        then Right ()
-        else Left $ InvalidBlockTxs invalidTxs 
+  | otherwise = verifyBlockSignature ledger block
+    
+validateAndApplyBlock 
+  :: Ledger 
+  -> Block
+  -> Block
+  -> Either InvalidBlock (Ledger, [T.InvalidTx])
+validateAndApplyBlock ledger prevBlock block = do 
+  validateBlock ledger prevBlock block
+  Right $ applyBlock ledger block
 
 -- | Apply block transactions to world state
 applyBlock 
   :: Ledger
   -> Block
-  -> (Ledger, [T.InvalidTransaction])
+  -> (Ledger, [T.InvalidTx])
 applyBlock ledger = T.applyTransactions ledger . transactions . header 
 
 -------------------------------------------------------------------------------
@@ -217,59 +218,9 @@ checkProofOfWork block =
     difficulty = calcDifficulty $ index block 
     prefix = toS $ replicate difficulty '0' 
 
-isValidBlock :: Block -> Block -> Maybe Text
-isValidBlock prevBlock newBlock
-  | index prevBlock + 1 /= index newBlock = Just "Index is invalid"
-  | hashBlock prevBlock /= 
-    previousHash (header newBlock)        = Just "PreviousHash is invalid"
--- | not (validateSignature newBlock)     = Just "Block Signature is invalid"
-  | otherwise                             = Nothing
-
-isValidChain :: Blockchain -> Maybe Text
-isValidChain (x0:x1:xs) = isValidBlock x1 x0 <|> isValidChain (x1:xs)
-isValidChain [_] = Nothing
-isValidChain [] = Just "Empty chain"
-
-emptyBlockchain :: Blockchain
-emptyBlockchain = []
-
-addBlock :: Block -> Blockchain -> Either Text Blockchain
-addBlock _ [] = Left "Cannot add block to empty chain"
-addBlock b (pb:bs) = 
-  case isValidBlock pb b of
-    Nothing -> Right $ b : pb : bs
-    Just err -> Left err
-
 -- | Get the latest block from the chain
 getLatestBlock :: Blockchain -> Maybe Block
 getLatestBlock = head 
-
--- | Generate a new block in the chain
-mineAndAddBlock 
-  :: MonadIO m 
-  => Blockchain
-  -> Key.PrivateKey
-  -> [Transaction]
-  -> m (Either Text (Block, Blockchain))
-mineAndAddblock _ _ [] = return $ 
-  Left "Cannot mine block with an empty mempool." 
-mineAndAddBlock chain privKey txs = do 
-  let mLatestBlock = getLatestBlock chain
-  case mLatestBlock of
-    Nothing -> return $ Left "mineAndAddBlock: Chain is empty" 
-    Just latestBlock -> do
-      newBlock <- mineBlock latestBlock privKey txs 
-      let eNewChain = addBlock newBlock chain
-      return $ (newBlock,) <$> eNewChain
-
--- | Returns Nothing if chain should be replaced
-replaceChain :: Blockchain -> Blockchain -> Maybe Text 
-replaceChain oldChain newChain = 
-  case isValidChain newChain of
-    Nothing 
-      | length newChain > length oldChain -> Nothing
-      | otherwise -> Just "replaceChain: invalid chain"
-    Just err -> Just err 
 
 -------------------------------------------------------------------------------
 -- Serialization

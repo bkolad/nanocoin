@@ -43,21 +43,18 @@ handleMsg nodeState msg = do
   logThread prefix $ "Received Msg: " <> (show msg :: Text) 
   let nodeSender = Node.nodeSender nodeState 
   case msg of
-    Msg.QueryLatestBlock -> do
-      mBlock <- Node.getLatestBlock nodeState
-      case mBlock of
-        Nothing -> logThread prefix "no block to return"
-        Just block -> nodeSender $ Msg.RespLatestBlock block
-    Msg.QueryBlockchain -> do
+    
+    Msg.QueryBlockMsg n -> do
       chain <- Node.getBlockChain nodeState 
-      nodeSender $ Msg.RespBlockchain chain 
-    Msg.RespLatestBlock block -> do
-      mMsg <- handleResponse nodeState [block] 
-      forM_ mMsg nodeSender
-    Msg.RespBlockchain blockchain -> do
-      mMsg <- handleResponse nodeState blockchain
-      forM_ mMsg nodeSender
-    Msg.NewTransaction tx -> do
+      case find ((==) n . Block.index) chain of
+        Nothing    -> logThread prefix $ 
+          "No block with index " <> show n
+        Just block -> nodeSender $ Msg.BlockMsg block
+   
+    Msg.BlockMsg block ->
+      Node.applyBlock nodeState block 
+
+    Msg.TransactionMsg tx -> do
       ledger <- Node.getLedger nodeState
       -- Verify Signature before adding to MemPool
       case T.verifyTxSignature ledger tx of
@@ -66,44 +63,6 @@ handleMsg nodeState msg = do
           Node.modifyMemPool_ nodeState $ 
             MemPool.addTransaction tx
         
-      
-
-handleResponse :: Node.NodeState -> Block.Blockchain -> IO (Maybe Msg.Msg)
-handleResponse nodeState newChain = do
-  let logThread' = logThread "handleResponse"
-  localChain <- Node.getBlockChain nodeState
-  case head newChain of
-    Nothing -> do 
-      logThread' "Empty response chain..." 
-      return Nothing 
-    Just latestBlockRec -> do
-      mLatestBlockHeld <- Node.getLatestBlock nodeState 
-      case mLatestBlockHeld of
-        Nothing -> do
-          logThread' "Empty local chain..." 
-          return Nothing
-        Just latestBlockHeld
-          | Block.index latestBlockRec > 
-            Block.index latestBlockHeld -> do 
-              logThread' "Local chain potentially behind..."
-              respond latestBlockRec latestBlockHeld
-          | otherwise -> do 
-              logThread' "received chain is not longer than local."
-              return Nothing
-  where
-    respond latestBlockRec latestBlockHeld 
-      | Block.hashBlock latestBlockHeld == 
-        Block.previousHash (Block.header latestBlockRec) = do
-          Node.addBlock nodeState latestBlockRec 
-          return $ Just $ Msg.RespLatestBlock latestBlockRec
-      -- XXX vvvv this might loop forever
-      | length newChain == 1 = return $ Just Msg.QueryBlockchain
-      | otherwise = do 
-          Node.setBlockChain nodeState newChain 
-          -- XXX Apply transactions to ledger here
-          -- Node.setLedger nodeState latestBlockRec
-          return $ Just $ Msg.RespLatestBlock latestBlockRec
-
 ----------------------------------------------------------------
 -- DEBUG
 ----------------------------------------------------------------

@@ -17,11 +17,9 @@ import qualified Nanocoin.Network.Multicast as M
 import qualified Nanocoin.Network.Peer as Peer 
 
 data Msg 
-  = QueryLatestBlock
-  | QueryBlockchain
-  | RespBlockchain Blockchain
-  | RespLatestBlock Block
-  | NewTransaction Transaction
+  = QueryBlockMsg Int
+  | BlockMsg Block
+  | TransactionMsg Transaction
   deriving (Eq, Show, Generic, S.Serialize)
 
 type MsgSender = M.Sender Msg

@@ -9,7 +9,7 @@ module Nanocoin.Network.Node (
   modifyBlockChain_,
   setBlockChain,
   
-  addBlock,
+  applyBlock,
   getLatestBlock,
   
   getLedger,
@@ -76,30 +76,37 @@ modifyNodeState_ nodeState f = liftIO . modifyMVar_ (f nodeState)
 modifyBlockChain_ 
   :: MonadIO m 
   => NodeState 
-  -> (Block.Blockchain -> IO Block.Blockchain) 
+  -> (Block.Blockchain -> Block.Blockchain) 
   -> m ()
-modifyBlockChain_ nodeState = modifyNodeState_ nodeState nodeChain 
+modifyBlockChain_ nodeState f = modifyNodeState_ nodeState nodeChain (pure . f) 
 
 -- | Warning: Unsafe replace chain. Use 'setBlockChain' to safely update chain
-setBlockChain' :: MonadIO m => NodeState -> Block.Blockchain -> m ()
-setBlockChain' nodeState chain = modifyBlockChain_ nodeState (pure . const chain) 
-
--- | Safe version of `setBlockChain'`, so you don't replace with a shorter chain
 setBlockChain :: MonadIO m => NodeState -> Block.Blockchain -> m ()
-setBlockChain nodeState newChain = 
-  modifyBlockChain_ nodeState $ \oldChain -> 
-    case Block.replaceChain oldChain newChain of
-      Nothing -> return newChain
-      Just err -> do
-        putStrLn err 
-        return oldChain 
+setBlockChain nodeState chain = modifyBlockChain_ nodeState (const chain) 
 
-addBlock :: MonadIO m => NodeState -> Block.Block -> m ()
-addBlock nodeState newBlock = 
-  modifyBlockChain_ nodeState $ \chain -> 
-    case Block.addBlock newBlock chain of
-      Left err -> putStrLn err >> return chain
-      Right newChain -> return newChain
+applyBlock 
+  :: MonadIO m 
+  => NodeState 
+  -> Block.Block 
+  -> m ()
+applyBlock nodeState block = do 
+  mPrevBlock <- getLatestBlock nodeState
+  case mPrevBlock of
+    Nothing -> putText "addBlock: No Genesis block found."
+    Just prevBlock -> do  
+      -- Validate block & Apply transactions to world state
+      ledger <- getLedger nodeState 
+      case Block.validateAndApplyBlock ledger prevBlock block of
+        Left err -> print err
+        Right (ledger', itxs)
+          | null itxs -> do
+              -- If no invalid transactions, add block to chain
+              modifyBlockChain_ nodeState (block:)
+              -- Remove transactions from memPool
+              let blockTxs = Block.transactions $ Block.header block
+              modifyMemPool_ nodeState $ MemPool.removeTransactions blockTxs
+              -- Update ledger to new ledger state
+              setLedger nodeState ledger' 
 
 setLedger :: MonadIO m => NodeState -> Ledger.Ledger -> m ()
 setLedger nodeState ledger = 
