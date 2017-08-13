@@ -1,4 +1,5 @@
-
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Nanocoin.MemPool (
   MemPool(..)
@@ -6,16 +7,19 @@ module Nanocoin.MemPool (
 
 import Protolude
 
+import Data.Aeson
+
 import Nanocoin.Transaction (Transaction)
 
+-- XXX [Transaction] to DList Transaction
+
 newtype MemPool = MemPool 
-  { unMemPool :: [Transaction] }
+  { unMemPool :: [Transaction] 
+  } deriving (Show, Eq, Generic, Monoid, ToJSON)
 
 addTransaction 
-  :: MemPool 
-  -> Transaction 
+  :: Transaction 
+  -> MemPool 
   -> MemPool
-addTransaction pool tx = undefined
-
-isTransactionUnique :: Transaction -> MemPool -> Bool
-isTransactionUnique = undefined 
+addTransaction tx (MemPool pool) = MemPool (pool ++ [tx])
+  

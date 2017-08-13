@@ -120,15 +120,15 @@ instance S.Serialize ECDSA.Signature
 
 putPublicKey :: S.Putter ECDSA.PublicKey
 putPublicKey pubKey = do 
-  let (r,s) = Key.extractPoint pubKey
-  Key.putInteger r
-  Key.putInteger s
+  let (x,y) = Key.extractPoint pubKey
+  Key.putInteger x
+  Key.putInteger y
 
 -- | UNSAFE: Does not check the validity of the point
 getPublicKey = do
-  r <- Key.getInteger
-  s <- Key.getInteger
-  pure $ Key.mkPublicKey (r,s)
+  x <- Key.getInteger
+  y <- Key.getInteger
+  pure $ Key.mkPublicKey (x,y)
 
 -- | Serialize an Integer
 putInteger :: S.Putter Integer 

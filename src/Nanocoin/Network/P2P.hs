@@ -27,6 +27,7 @@ p2p :: Node.NodeState -> IO ()
 p2p nodeState = do -- TODO: Take buffer size as argument, max size of blockchain
   let (sender,receiver) = Node.nodeSender &&& Node.nodeReceiver $ nodeState
   void $ forkIO $ forever $ receiver >>= -- | Forever handle messages 
+    -- XXX forkIO here again?
     either (logThread "p2p") (handleMsg nodeState . fst) 
 
 ----------------------------------------------------------------
@@ -46,7 +47,7 @@ handleMsg nodeState msg = do
         Nothing -> logThread prefix "no block to return"
         Just block -> nodeSender $ Msg.RespLatestBlock block
     Msg.QueryBlockchain -> do
-      chain <- Node.getNodeChain nodeState 
+      chain <- Node.getBlockChain nodeState 
       nodeSender $ Msg.RespBlockchain chain 
     Msg.RespLatestBlock block -> do
       mMsg <- handleResponse nodeState [block] 
@@ -58,7 +59,7 @@ handleMsg nodeState msg = do
 handleResponse :: Node.NodeState -> Block.Blockchain -> IO (Maybe Msg.Msg)
 handleResponse nodeState newChain = do
   let logThread' = logThread "handleResponse"
-  localChain <- Node.getNodeChain nodeState
+  localChain <- Node.getBlockChain nodeState
   case head newChain of
     Nothing -> do 
       logThread' "Empty response chain..." 
@@ -81,11 +82,12 @@ handleResponse nodeState newChain = do
     respond latestBlockRec latestBlockHeld 
       | Block.hashBlock latestBlockHeld == 
         Block.previousHash (Block.header latestBlockRec) = do
-          Node.addBlockNodeChain nodeState latestBlockRec 
+          Node.addBlock nodeState latestBlockRec 
           return $ Just $ Msg.RespLatestBlock latestBlockRec
+      -- XXX vvvv this might loop forever
       | length newChain == 1 = return $ Just Msg.QueryBlockchain
       | otherwise = do 
-          Node.setNodeChain nodeState newChain 
+          Node.setBlockChain nodeState newChain 
           -- XXX Apply transactions to ledger here
           -- Node.setLedger nodeState latestBlockRec
           return $ Just $ Msg.RespLatestBlock latestBlockRec

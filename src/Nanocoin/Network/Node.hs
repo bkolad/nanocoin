@@ -5,18 +5,22 @@ module Nanocoin.Network.Node (
 
   initNodeState,
 
-  getNodeChain,
-  modifyNodeChain_,
-  setNodeChain,
+  getBlockChain,
+  modifyBlockChain_,
+  setBlockChain,
   
-  addBlockNodeChain,
+  addBlock,
   getLatestBlock,
   
   getLedger,
   setLedger,
   
-  getNodePeers,
+  getPeers,
   getPortsInUse,
+
+  getMemPool,
+  modifyMemPool_,
+
 ) where
 
 import Protolude 
@@ -26,6 +30,7 @@ import Data.Aeson (ToJSON(..))
 
 import qualified Nanocoin.Block as Block
 import qualified Nanocoin.Ledger as Ledger 
+import qualified Nanocoin.MemPool as MemPool
 import qualified Nanocoin.Network.Message as Msg
 import qualified Nanocoin.Network.Multicast as M
 import qualified Nanocoin.Network.Peer as Peer 
@@ -39,7 +44,8 @@ data NodeState = NodeState
   , nodeKeys     :: Key.KeyPair
   , nodeSender   :: Msg.MsgSender 
   , nodeReceiver :: Msg.MsgReceiver
-  , nodeLedger   :: MVar Ledger.Ledger 
+  , nodeLedger   :: MVar Ledger.Ledger
+  , nodeMemPool  :: MVar MemPool.MemPool
   } 
 
 initNodeState :: Peer.Peer -> MVar [Peer.Peer] -> IO NodeState
@@ -49,6 +55,7 @@ initNodeState self peersMV = do
   keyPair  <- Key.newKeyPair 
   (receiver, sender) <- M.initMulticast hn p2pPort 65536
   ledgerMV <- newMVar mempty
+  memPoolMV <- newMVar mempty
   return NodeState 
     { nodeConfig   = self
     , nodeChain    = chainMV
@@ -57,6 +64,7 @@ initNodeState self peersMV = do
     , nodeSender   = sender
     , nodeReceiver = receiver
     , nodeLedger   = ledgerMV 
+    , nodeMemPool  = memPoolMV
     }
 
 -------------------------------------------------------------------------------
@@ -71,60 +79,77 @@ modifyNodeState_
   -> m ()
 modifyNodeState_ nodeState f = liftIO . modifyMVar_ (f nodeState) 
 
-modifyNodeChain_ 
+modifyBlockChain_ 
   :: MonadIO m 
   => NodeState 
   -> (Block.Blockchain -> IO Block.Blockchain) 
   -> m ()
-modifyNodeChain_ nodeState = modifyNodeState_ nodeState nodeChain 
+modifyBlockChain_ nodeState = modifyNodeState_ nodeState nodeChain 
 
--- | Warning: Unsafe replace chain. Use 'setNodeChain' to safely update chain
-setNodeChain' :: MonadIO m => NodeState -> Block.Blockchain -> m ()
-setNodeChain' nodeState chain = modifyNodeChain_ nodeState (pure . const chain) 
+-- | Warning: Unsafe replace chain. Use 'setBlockChain' to safely update chain
+setBlockChain' :: MonadIO m => NodeState -> Block.Blockchain -> m ()
+setBlockChain' nodeState chain = modifyBlockChain_ nodeState (pure . const chain) 
 
--- | Safe version of `setNodeChain'`, so you don't replace with a shorter chain
-setNodeChain :: MonadIO m => NodeState -> Block.Blockchain -> m ()
-setNodeChain nodeState newChain = 
-  modifyNodeChain_ nodeState $ \oldChain -> 
+-- | Safe version of `setBlockChain'`, so you don't replace with a shorter chain
+setBlockChain :: MonadIO m => NodeState -> Block.Blockchain -> m ()
+setBlockChain nodeState newChain = 
+  modifyBlockChain_ nodeState $ \oldChain -> 
     case Block.replaceChain oldChain newChain of
       Nothing -> return newChain
       Just err -> do
         putStrLn err 
         return oldChain 
 
-addBlockNodeChain :: MonadIO m => NodeState -> Block.Block -> m ()
-addBlockNodeChain nodeState newBlock = 
-  modifyNodeChain_ nodeState $ \chain -> 
+addBlock :: MonadIO m => NodeState -> Block.Block -> m ()
+addBlock nodeState newBlock = 
+  modifyBlockChain_ nodeState $ \chain -> 
     case Block.addBlock newBlock chain of
       Left err -> putStrLn err >> return chain
       Right newChain -> return newChain
-
-getLedger :: MonadIO m => NodeState -> m Ledger.Ledger
-getLedger = readMVar' . nodeLedger
 
 setLedger :: MonadIO m => NodeState -> Ledger.Ledger -> m ()
 setLedger nodeState ledger = 
   modifyNodeState_ nodeState nodeLedger $ \_ -> 
     putText "Updating Ledger..." >> pure ledger
 
+modifyMemPool_
+  :: MonadIO m 
+  => NodeState
+  -> (MemPool.MemPool -> MemPool.MemPool)
+  -> m ()
+modifyMemPool_ nodeState f = 
+  modifyNodeState_ nodeState nodeMemPool (pure . f)
+
+resetMemPool 
+  :: MonadIO m
+  => NodeState
+  -> m ()
+resetMemPool = flip modifyMemPool_ (const mempty) 
+
 ------------------------------------------------------------------------------- 
 -- NodeState Querying
 -------------------------------------------------------------------------------
 
-getNodeChain :: MonadIO m => NodeState -> m Block.Blockchain
-getNodeChain = liftIO . readMVar . nodeChain
+getBlockChain :: MonadIO m => NodeState -> m Block.Blockchain
+getBlockChain = liftIO . readMVar . nodeChain
 
 getLatestBlock :: MonadIO m => NodeState -> m (Maybe Block.Block)
-getLatestBlock = fmap head . getNodeChain
+getLatestBlock = fmap head . getBlockChain
 
-getNodePeers :: MonadIO m => NodeState -> m [Peer.Peer]
-getNodePeers = liftIO . readMVar . nodePeers
+getPeers :: MonadIO m => NodeState -> m [Peer.Peer]
+getPeers = liftIO . readMVar . nodePeers
+
+getLedger :: MonadIO m => NodeState -> m Ledger.Ledger
+getLedger = readMVar' . nodeLedger
 
 -- | Returns ports in use by the blockchain network
 getPortsInUse :: MonadIO m => NodeState -> m [Int]
 getPortsInUse nodeState = do
-    peers <- getNodePeers nodeState
+    peers <- getPeers nodeState
     return $ Peer.getPortsInUse peers 
+
+getMemPool :: MonadIO m => NodeState -> m MemPool.MemPool
+getMemPool = readMVar' . nodeMemPool
 
 -------------------------------------------------------------------------------
 -- Helpers

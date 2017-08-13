@@ -6,6 +6,7 @@ module Address (
   rawAddress,
   mkAddress,
   deriveAddress,
+  validateAddress,
 ) where
 
 import Protolude
@@ -13,6 +14,7 @@ import Protolude
 import Crypto.Number.Serialize (i2osp)
 
 import Data.Aeson 
+import Data.Aeson.Types (toJSONKeyText) 
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString.Base58 as B58
 import qualified Data.Serialize as S
@@ -30,13 +32,16 @@ newtype Address = Address { rawAddress :: ByteString }
 instance ToJSON Address where
   toJSON (Address bs) = Data.Aeson.String (decodeUtf8 bs)
 
+instance ToJSONKey Address where
+  toJSONKey = toJSONKeyText (decodeUtf8 . rawAddress) 
+
 -- XXX UNSAFE decode
 instance FromJSON Address where
   parseJSON (String s) = pure $ Address $ encodeUtf8 s
 
 -- | UNSAFE: Does not validate ByteString supplied
 mkAddress :: ByteString -> Address
-mkAddress = Address . b58
+mkAddress = Address 
 
 -- | Derive an address from an ECC public key
 --

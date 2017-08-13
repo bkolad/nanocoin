@@ -6,14 +6,19 @@ module Nanocoin.Transaction (
   TransactionHeader(..),
   Transfer(..),
   CreateAccount(..),
- 
+  
+  -- ** Construction 
+  addAccountTx,
+  transferTx,
+
   -- ** Validation
   InvalidTransaction(..),
-  validateTransaction
+  applyTransaction,
+  applyTransactions
 
 ) where
 
-import Protolude
+import Protolude hiding (throwError)
 
 import Data.Aeson
 import Data.Aeson.Types
@@ -29,27 +34,22 @@ import qualified Hash
 import qualified Key 
 import qualified Nanocoin.Ledger as Ledger
 
-
 type Timestamp = Integer
 
 data Transfer = Transfer
   { issuer    :: Address
   , recipient :: Address
   , amount    :: Int
-  } deriving (Eq, Show, Generic, S.Serialize)
+  } deriving (Eq, Show, Generic, S.Serialize, ToJSON)
 
 newtype CreateAccount = CreateAccount 
   { publicKey :: Key.PublicKey
   } deriving (Eq, Show, Generic)
 
-instance S.Serialize CreateAccount where
-  put (CreateAccount pubKey) = Key.putPublicKey pubKey 
-  get = CreateAccount <$> Key.getPublicKey 
-
 data TransactionHeader 
   = TxTransfer Transfer
   | TxAccount CreateAccount 
-  deriving (Eq, Show, Generic, S.Serialize)
+  deriving (Eq, Show, Generic, S.Serialize, ToJSON)
 
 data Transaction = Transaction 
   { header    :: TransactionHeader
@@ -92,7 +92,7 @@ transferTx (Key.KeyPair pubKey privKey) recipient amnt =
     issuer = Address.deriveAddress pubKey
 
 -------------------------------------------------------------------------------
--- Validation
+-- Validation & Application of Transactions
 -------------------------------------------------------------------------------
 
 data InvalidTransaction
@@ -108,70 +108,82 @@ verifyTxSignature
 verifyTxSignature l tx = do 
   let txHeader = header tx 
   pubKey <- case txHeader of
+    -- Create account transactions are self-signed
     TxAccount (CreateAccount pubKey) -> Right pubKey 
+    -- To transfer, the tx hash must be signed by the issuer
     TxTransfer (Transfer issuer _ _) -> 
       case Ledger.lookupAccount issuer l of
         Nothing -> Left $ InvalidTranferIssuer issuer
         Just acc -> Right $ fst acc
   case S.decode (signature tx) of
     Left err -> Left $ InvalidTxSignature (toS err)
-    Right sig -> do
+    Right sig -> do 
       let validSig = Key.verify pubKey sig (S.encode txHeader)
       unless validSig $
         Left $ InvalidTxSignature "Failed to verify transaction signature"
 
-validateTransaction 
+type ApplyM = State [InvalidTransaction]
+
+throwError :: InvalidTransaction -> ApplyM ()
+throwError itx = modify (itx:) 
+
+runApplyM :: ApplyM a -> (a,[InvalidTransaction])
+runApplyM = flip runState []
+
+-- | Applies a list of transactions to the ledger
+applyTransactions 
+  :: Ledger
+  -> [Transaction]
+  -> (Ledger,[InvalidTransaction])
+applyTransactions ledger = 
+  runApplyM . foldM applyTransaction ledger 
+
+-- | Applies a transaction to the ledger state
+applyTransaction 
   :: Ledger 
   -> Transaction 
-  -> Either InvalidTransaction ()
-validateTransaction _ _ = Right () -- XXX 
+  -> ApplyM Ledger 
+applyTransaction ledger tx = do
+  -- Verify Transaction Signature
+  case verifyTxSignature ledger tx of
+    Left err -> throwError err
+    Right _  -> pure ()
+  -- Apply transaction to world state
+  case header tx of
+    TxAccount (CreateAccount pubkey) -> 
+      case Ledger.addAccount pubkey ledger of
+        Left err -> do
+          throwError $ InvalidAccount err
+          pure ledger 
+        Right ledger' -> pure ledger' 
+    TxTransfer (Transfer from to amnt) -> 
+      case Ledger.transfer ledger from to amnt of
+        Left err -> do
+          throwError $ InvalidTransfer err
+          pure ledger 
+        Right ledger' -> pure ledger' 
 
 -------------------------------------------------------------------------------
 -- Serialization
 -------------------------------------------------------------------------------
 
-instance ToJSON Transfer where
-  toJSON (Transfer from to amnt) = 
-    object [ "issuer"    .= Hash.encode64 (S.encode from)
-           , "recipient" .= Hash.encode64 (S.encode to)
-           , "amount"    .= toJSON amnt
-           ]
-
-instance FromJSON Transfer where
-  parseJSON (Object o) = do
-    fromAddr' <- fmap S.decode $ Hash.decode64 =<< (o .: "issuer") 
-    toAddr'   <- fmap S.decode $ Hash.decode64 =<< (o .: "recipient") 
-    case (,) <$> fromAddr' <*> toAddr' of
-      Left err -> typeMismatch "TransactionHeader: address" (Object o) 
-      Right (fromAddr, toAddr) -> do
-        amnt <- o .: "amount" 
-        pure $ Transfer fromAddr toAddr amnt
-  parseJSON invalid = typeMismatch "TransactionHeader" invalid
-
 instance ToJSON CreateAccount where
-  toJSON (CreateAccount pubKey) = 
-    object [ "pubKey " .= Hash.encode64 (Key.hexPub pubKey) 
+  toJSON (CreateAccount pubKey) =
+    let (x,y) = Key.extractPoint pubKey in 
+    object [ "tag" .= ("CreateAccount" :: Text)
+           , "contents" .=
+               object [ "x" .= (x :: Integer)
+                      , "y" .= (y :: Integer)
+                      ]
            ]
 
-instance FromJSON CreateAccount where
-  parseJSON (Object o) = do
-    ePubKey <- fmap Key.dehexPub $ Hash.decode64 =<< (o .: "pubKey")
-    case ePubKey of
-      Left err -> typeMismatch "CreateAccount: pubKey" (Object o)
-      Right pubKey -> pure $ CreateAccount pubKey
-
-instance ToJSON TransactionHeader 
-instance FromJSON TransactionHeader 
+instance S.Serialize CreateAccount where
+  put (CreateAccount pubKey) = Key.putPublicKey pubKey 
+  get = CreateAccount <$> Key.getPublicKey 
 
 instance ToJSON Transaction where
   toJSON (Transaction h s) = 
     object [ "header"    .= h
            , "signature" .= Hash.encode64 s
            ]
-
-instance FromJSON Transaction where
-  parseJSON (Object o) =
-    Transaction <$>  o .: "header"
-                <*> (o .: "signature" >>= Hash.decode64)
-  parseJSON invalid = typeMismatch "Transaction" invalid
     

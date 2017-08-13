@@ -11,15 +11,17 @@ import Protolude hiding (msg)
 
 import qualified Data.Serialize as S
 
-import qualified Nanocoin.Block as Block
+import Nanocoin.Block 
+import Nanocoin.Transaction 
 import qualified Nanocoin.Network.Multicast as M 
 import qualified Nanocoin.Network.Peer as Peer 
 
 data Msg 
   = QueryLatestBlock
   | QueryBlockchain
-  | RespBlockchain Block.Blockchain
-  | RespLatestBlock Block.Block   
+  | RespBlockchain Blockchain
+  | RespLatestBlock Block
+  | NewTransaction Transaction
   deriving (Eq, Show, Generic, S.Serialize)
 
 type MsgSender = M.Sender Msg

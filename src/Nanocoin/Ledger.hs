@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Nanocoin.Ledger (
   Ledger,
@@ -14,6 +14,7 @@ module Nanocoin.Ledger (
 
 import Protolude
 
+import Data.Aeson
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Serialize as S 
@@ -38,6 +39,9 @@ data AddAccountError = AccountExists Address
 newtype Ledger = Ledger
   { unLedger :: Map Address Account
   } deriving (Eq, Show, Generic, Monoid)
+
+instance ToJSON Ledger where
+  toJSON = toJSON . map snd . unLedger
 
 emptyLedger :: Ledger
 emptyLedger = Ledger mempty

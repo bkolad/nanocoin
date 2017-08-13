@@ -113,7 +113,7 @@ data InvalidBlock
   | InvalidBlockHash
   | InvalidPrevBlockHash
   | InvalidOriginAddress Address
-  | InvalidBlockTx T.InvalidTransaction
+  | InvalidBlockTxs [T.InvalidTransaction]
 
 verifyBlockSignature 
   :: Ledger 
@@ -130,6 +130,7 @@ verifyBlockSignature l b =
         unless validSig $ 
           Left $ InvalidBlockSignature "Verify failed"
 
+-- | Validate a block before accepting a block as new block in chain
 validateBlock 
   :: Ledger 
   -> Block 
@@ -139,8 +140,19 @@ validateBlock ledger prevBlock block
   | index block /= index prevBlock + 1 = Left InvalidBlockIndex 
   | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
   | not (checkProofOfWork block) = Left InvalidBlockHash
-  | otherwise = verifyBlockSignature ledger block
+  | otherwise = do
+      verifyBlockSignature ledger block
+      let invalidTxs = snd $ applyBlock ledger block
+      if null invalidTxs 
+        then Right ()
+        else Left $ InvalidBlockTxs invalidTxs 
 
+-- | Apply block transactions to world state
+applyBlock 
+  :: Ledger
+  -> Block
+  -> (Ledger, [T.InvalidTransaction])
+applyBlock ledger = T.applyTransactions ledger . transactions . header 
 
 -------------------------------------------------------------------------------
 -- Block/chain operations 
@@ -239,6 +251,8 @@ mineAndAddBlock
   -> Key.PrivateKey
   -> [Transaction]
   -> m (Either Text (Block, Blockchain))
+mineAndAddblock _ _ [] = return $ 
+  Left "Cannot mine block with an empty mempool." 
 mineAndAddBlock chain privKey txs = do 
   let mLatestBlock = getLatestBlock chain
   case mLatestBlock of
@@ -269,13 +283,6 @@ instance ToJSON BlockHeader where
            , "nonce"        .= toJSON n
            ]
 
-instance FromJSON BlockHeader where
-  parseJSON (Object o) = 
-    BlockHeader <$> (o .: "origin" >>= fmap mkAddress . Hash.decode64)  
-                <*> (o .: "previousHash" >>= Hash.decode64)
-                <*> (o .: "transactions")
-                <*> (o .: "nonce") 
-
 instance ToJSON Block where
   toJSON (Block i bh ts s) =
     object [ "index"  .= i
@@ -283,12 +290,3 @@ instance ToJSON Block where
            , "timestamp" .= toJSON ts
            , "signature" .= Hash.encode64 s 
            ]
-
-instance FromJSON Block where
-  parseJSON (Object o) =
-    Block <$>  o .: "index"
-          <*>  o .: "header"
-          <*>  o .: "nonce"
-          <*> (o .: "signature" >>= Hash.decode64)
-  parseJSON invalid = typeMismatch "Block" invalid  
-
