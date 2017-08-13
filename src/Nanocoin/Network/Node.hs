@@ -15,9 +15,6 @@ module Nanocoin.Network.Node (
   getLedger,
   setLedger,
   
-  getPeers,
-  getPortsInUse,
-
   getMemPool,
   modifyMemPool_,
 
@@ -40,7 +37,6 @@ import qualified Key
 data NodeState = NodeState
   { nodeConfig   :: Peer.Peer
   , nodeChain    :: MVar Block.Blockchain
-  , nodePeers    :: MVar [Peer.Peer]
   , nodeKeys     :: Key.KeyPair
   , nodeSender   :: Msg.MsgSender 
   , nodeReceiver :: Msg.MsgReceiver
@@ -48,19 +44,17 @@ data NodeState = NodeState
   , nodeMemPool  :: MVar MemPool.MemPool
   } 
 
-initNodeState :: Peer.Peer -> MVar [Peer.Peer] -> IO NodeState
-initNodeState self peersMV = do
+initNodeState :: Peer.Peer -> Key.KeyPair -> IO NodeState
+initNodeState self keys = do
   let (Peer.Peer hn p2pPort _) = self
   chainMV  <- newMVar [Block.genesisBlock]
-  keyPair  <- Key.newKeyPair 
   (receiver, sender) <- M.initMulticast hn p2pPort 65536
   ledgerMV <- newMVar mempty
   memPoolMV <- newMVar mempty
   return NodeState 
     { nodeConfig   = self
     , nodeChain    = chainMV
-    , nodePeers    = peersMV
-    , nodeKeys     = keyPair 
+    , nodeKeys     = keys 
     , nodeSender   = sender
     , nodeReceiver = receiver
     , nodeLedger   = ledgerMV 
@@ -136,17 +130,8 @@ getBlockChain = liftIO . readMVar . nodeChain
 getLatestBlock :: MonadIO m => NodeState -> m (Maybe Block.Block)
 getLatestBlock = fmap head . getBlockChain
 
-getPeers :: MonadIO m => NodeState -> m [Peer.Peer]
-getPeers = liftIO . readMVar . nodePeers
-
 getLedger :: MonadIO m => NodeState -> m Ledger.Ledger
 getLedger = readMVar' . nodeLedger
-
--- | Returns ports in use by the blockchain network
-getPortsInUse :: MonadIO m => NodeState -> m [Int]
-getPortsInUse nodeState = do
-    peers <- getPeers nodeState
-    return $ Peer.getPortsInUse peers 
 
 getMemPool :: MonadIO m => NodeState -> m MemPool.MemPool
 getMemPool = readMVar' . nodeMemPool

@@ -47,22 +47,14 @@ import qualified Hash
 sec_p256k1 :: ECC.Curve
 sec_p256k1 = ECC.getCurveByName ECC.SEC_p256k1
 
-data KeyPair = KeyPair 
-  { publicKey  :: ECDSA.PublicKey
-  , privateKey :: ECDSA.PrivateKey
-  }
-
-getKeyPair :: KeyPair -> (ECDSA.PublicKey, ECDSA.PrivateKey)
-getKeyPair (KeyPair pk sk) = (pk, sk)
+type KeyPair = (ECDSA.PublicKey, ECDSA.PrivateKey)
 
 -- | (pk, sk) <- new
 -- Returns a new elliptic curve key pair.
 --
 -- WARNING: Vulnerable to timing attacks.
 newKeyPair :: IO KeyPair
-newKeyPair = do
-  (pubKey, privKey) <- ECC.generate sec_p256k1
-  return $ KeyPair pubKey privKey
+newKeyPair = ECC.generate sec_p256k1
 
 -- | Create a public key from a secret key
 --

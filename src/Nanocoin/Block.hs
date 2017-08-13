@@ -278,7 +278,7 @@ replaceChain oldChain newChain =
 instance ToJSON BlockHeader where
   toJSON (BlockHeader o ph txs n) =
     object [ "origin"       .= Hash.encode64 (rawAddress o)
-           , "previousHash" .= Hash.encode64 ph
+           , "previousHash" .= decodeUtf8 ph
            , "transactions" .= toJSON txs
            , "nonce"        .= toJSON n
            ]

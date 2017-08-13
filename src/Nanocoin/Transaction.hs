@@ -6,13 +6,14 @@ module Nanocoin.Transaction (
   TransactionHeader(..),
   Transfer(..),
   CreateAccount(..),
-  
-  -- ** Construction 
+
+  -- ** Construction
   addAccountTx,
   transferTx,
 
   -- ** Validation
   InvalidTransaction(..),
+  verifyTxSignature,
   applyTransaction,
   applyTransactions
 
@@ -30,8 +31,8 @@ import Address (Address, rawAddress, deriveAddress)
 import Hash (Hash)
 import Nanocoin.Ledger (Ledger)
 
-import qualified Hash 
-import qualified Key 
+import qualified Hash
+import qualified Key
 import qualified Nanocoin.Ledger as Ledger
 
 type Timestamp = Integer
@@ -42,23 +43,23 @@ data Transfer = Transfer
   , amount    :: Int
   } deriving (Eq, Show, Generic, S.Serialize, ToJSON)
 
-newtype CreateAccount = CreateAccount 
+newtype CreateAccount = CreateAccount
   { publicKey :: Key.PublicKey
   } deriving (Eq, Show, Generic)
 
-data TransactionHeader 
+data TransactionHeader
   = TxTransfer Transfer
-  | TxAccount CreateAccount 
+  | TxAccount CreateAccount
   deriving (Eq, Show, Generic, S.Serialize, ToJSON)
 
-data Transaction = Transaction 
+data Transaction = Transaction
   { header    :: TransactionHeader
   , signature :: ByteString
   } deriving (Eq, Show, Generic, S.Serialize)
 
 hashTransaction :: Transaction -> ByteString
 hashTransaction = Hash.getHash . Hash.sha256 . hashTxHeader . header
- 
+
 hashTxHeader :: TransactionHeader -> ByteString
 hashTxHeader = Hash.getHash . Hash.sha256 . S.encode
 
@@ -66,29 +67,29 @@ hashTxHeader = Hash.getHash . Hash.sha256 . S.encode
 -- Transaction Construction
 -------------------------------------------------------------------------------
 
-transaction 
-  :: Key.PrivateKey 
-  -> TransactionHeader 
+transaction
+  :: Key.PrivateKey
+  -> TransactionHeader
   -> IO Transaction
 transaction privKey txHdr = do
   txSig <- Key.sign privKey $ hashTxHeader txHdr
   pure $ Transaction txHdr $ S.encode txSig
 
-addAccountTx 
+addAccountTx
   :: Key.KeyPair
   -> IO Transaction
-addAccountTx (Key.KeyPair pubKey privKey) = 
+addAccountTx (pubKey, privKey) =
   transaction privKey (TxAccount $ CreateAccount pubKey)
-  
-transferTx 
+
+transferTx
   :: Key.KeyPair -- ^ Key pair of transfer issuer
   -> Address     -- ^ Address of recipient
   -> Int         -- ^ Transfer amount
   -> IO Transaction
-transferTx (Key.KeyPair pubKey privKey) recipient amnt = 
-    transaction privKey (TxTransfer transfer') 
+transferTx (pubKey, privKey) recipient amnt =
+    transaction privKey (TxTransfer transfer')
   where
-    transfer' = Transfer issuer recipient amnt 
+    transfer' = Transfer issuer recipient amnt
     issuer = Address.deriveAddress pubKey
 
 -------------------------------------------------------------------------------
@@ -96,53 +97,55 @@ transferTx (Key.KeyPair pubKey privKey) recipient amnt =
 -------------------------------------------------------------------------------
 
 data InvalidTransaction
-  = InvalidTxSignature Text 
+  = InvalidTxSignature Text
   | InvalidTransfer Ledger.TransferError
   | InvalidAccount Ledger.AddAccountError
   | InvalidTranferIssuer Address
+  deriving (Show, Eq)
 
-verifyTxSignature 
+verifyTxSignature
   :: Ledger
-  -> Transaction 
-  -> Either InvalidTransaction () 
-verifyTxSignature l tx = do 
-  let txHeader = header tx 
+  -> Transaction
+  -> Either InvalidTransaction ()
+verifyTxSignature l tx = do
+  let txHeader = header tx
   pubKey <- case txHeader of
     -- Create account transactions are self-signed
-    TxAccount (CreateAccount pubKey) -> Right pubKey 
+    TxAccount (CreateAccount pubKey) -> Right pubKey
     -- To transfer, the tx hash must be signed by the issuer
-    TxTransfer (Transfer issuer _ _) -> 
+    TxTransfer (Transfer issuer _ _) ->
       case Ledger.lookupAccount issuer l of
         Nothing -> Left $ InvalidTranferIssuer issuer
         Just acc -> Right $ fst acc
   case S.decode (signature tx) of
     Left err -> Left $ InvalidTxSignature (toS err)
-    Right sig -> do 
-      let validSig = Key.verify pubKey sig (S.encode txHeader)
+    Right sig -> do
+      let txHash = hashTxHeader txHeader
+      let validSig = Key.verify pubKey sig txHash
       unless validSig $
         Left $ InvalidTxSignature "Failed to verify transaction signature"
 
 type ApplyM = State [InvalidTransaction]
 
 throwError :: InvalidTransaction -> ApplyM ()
-throwError itx = modify (itx:) 
+throwError itx = modify (itx:)
 
 runApplyM :: ApplyM a -> (a,[InvalidTransaction])
 runApplyM = flip runState []
 
 -- | Applies a list of transactions to the ledger
-applyTransactions 
+applyTransactions
   :: Ledger
   -> [Transaction]
   -> (Ledger,[InvalidTransaction])
-applyTransactions ledger = 
-  runApplyM . foldM applyTransaction ledger 
+applyTransactions ledger =
+  runApplyM . foldM applyTransaction ledger
 
 -- | Applies a transaction to the ledger state
-applyTransaction 
-  :: Ledger 
-  -> Transaction 
-  -> ApplyM Ledger 
+applyTransaction
+  :: Ledger
+  -> Transaction
+  -> ApplyM Ledger
 applyTransaction ledger tx = do
   -- Verify Transaction Signature
   case verifyTxSignature ledger tx of
@@ -150,18 +153,18 @@ applyTransaction ledger tx = do
     Right _  -> pure ()
   -- Apply transaction to world state
   case header tx of
-    TxAccount (CreateAccount pubkey) -> 
+    TxAccount (CreateAccount pubkey) ->
       case Ledger.addAccount pubkey ledger of
         Left err -> do
           throwError $ InvalidAccount err
-          pure ledger 
-        Right ledger' -> pure ledger' 
-    TxTransfer (Transfer from to amnt) -> 
+          pure ledger
+        Right ledger' -> pure ledger'
+    TxTransfer (Transfer from to amnt) ->
       case Ledger.transfer ledger from to amnt of
         Left err -> do
           throwError $ InvalidTransfer err
-          pure ledger 
-        Right ledger' -> pure ledger' 
+          pure ledger
+        Right ledger' -> pure ledger'
 
 -------------------------------------------------------------------------------
 -- Serialization
@@ -169,7 +172,7 @@ applyTransaction ledger tx = do
 
 instance ToJSON CreateAccount where
   toJSON (CreateAccount pubKey) =
-    let (x,y) = Key.extractPoint pubKey in 
+    let (x,y) = Key.extractPoint pubKey in
     object [ "tag" .= ("CreateAccount" :: Text)
            , "contents" .=
                object [ "x" .= (x :: Integer)
@@ -178,12 +181,11 @@ instance ToJSON CreateAccount where
            ]
 
 instance S.Serialize CreateAccount where
-  put (CreateAccount pubKey) = Key.putPublicKey pubKey 
-  get = CreateAccount <$> Key.getPublicKey 
+  put (CreateAccount pubKey) = Key.putPublicKey pubKey
+  get = CreateAccount <$> Key.getPublicKey
 
 instance ToJSON Transaction where
-  toJSON (Transaction h s) = 
+  toJSON (Transaction h s) =
     object [ "header"    .= h
            , "signature" .= Hash.encode64 s
            ]
-    

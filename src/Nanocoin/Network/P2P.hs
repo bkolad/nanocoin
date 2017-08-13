@@ -10,12 +10,14 @@ import Control.Arrow ((&&&))
 
 import Network.Socket (HostName, PortNumber)
 
+import qualified Nanocoin.Block as Block
+import qualified Nanocoin.MemPool as MemPool 
+import qualified Nanocoin.Transaction as T
 import qualified Nanocoin.Network.Multicast as M
 import qualified Nanocoin.Network.Message as Msg 
 import qualified Nanocoin.Network.Node as Node
 import qualified Nanocoin.Network.Peer as Peer 
 import qualified Nanocoin.Network.RPC as RPC 
-import qualified Nanocoin.Block as Block
 
 -------------------------------------------------------------------------------
 -- P2P
@@ -54,7 +56,17 @@ handleMsg nodeState msg = do
       forM_ mMsg nodeSender
     Msg.RespBlockchain blockchain -> do
       mMsg <- handleResponse nodeState blockchain
-      forM_ mMsg nodeSender 
+      forM_ mMsg nodeSender
+    Msg.NewTransaction tx -> do
+      ledger <- Node.getLedger nodeState
+      -- Verify Signature before adding to MemPool
+      case T.verifyTxSignature ledger tx of
+        Left err -> print err
+        Right _  -> -- Add transaction to mempool
+          Node.modifyMemPool_ nodeState $ 
+            MemPool.addTransaction tx
+        
+      
 
 handleResponse :: Node.NodeState -> Block.Blockchain -> IO (Maybe Msg.Msg)
 handleResponse nodeState newChain = do

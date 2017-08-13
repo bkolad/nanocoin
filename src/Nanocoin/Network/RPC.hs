@@ -34,6 +34,8 @@ rpcServer nodeState = do
 
   scotty rpcPort $ do
 
+    defaultHandler $ putText . toS 
+
     --------------------------------------------------
     -- Queries
     --------------------------------------------------
@@ -44,9 +46,6 @@ rpcServer nodeState = do
     get "/mempool" $
       queryNodeState nodeState getMemPool
 
-    get "/peers" $
-      queryNodeState nodeState getPeers
-
     get "/ledger" $
       queryNodeState nodeState getLedger
 
@@ -56,7 +55,7 @@ rpcServer nodeState = do
 
     get "/mineBlock" $ do
       chain <- getBlockChain nodeState
-      let privKey = Key.privateKey $ nodeKeys nodeState
+      let privKey = snd $ nodeKeys nodeState
       txs <- MemPool.unMemPool <$> getMemPool nodeState
       mRes <- Block.mineAndAddBlock chain privKey txs
       case mRes of

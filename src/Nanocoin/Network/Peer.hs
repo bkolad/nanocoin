@@ -3,10 +3,7 @@
 
 module Nanocoin.Network.Peer (
   Peer(..),
-  getPeerPorts,
-  bootNodes,
   mkPeer,
-  getPortsInUse,
 ) where
 
 import Protolude
@@ -38,20 +35,5 @@ data Peer = Peer
 defP2PPort :: P2PPort
 defP2PPort = 8001
 
-bootNodes :: [Peer]
-bootNodes = map mkPeer initPorts 
-  where 
-    initPorts = [3000,3001,3002]
-
 mkPeer :: RPCPort -> Peer
 mkPeer = Peer defMulticastHostName defP2PPort 
-
-getPeerPorts :: Peer -> (RPCPort, P2PPort)
-getPeerPorts = rpcPort &&& p2pPort
-
-getPortsInUse :: [Peer] -> [Int]
-getPortsInUse peers = 
-    nub $ httpPorts ++ map fromIntegral p2pPorts
-  where
-    (httpPorts, p2pPorts) = getPorts peers
-    getPorts = unzip . map getPeerPorts 

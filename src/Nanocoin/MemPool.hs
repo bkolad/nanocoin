@@ -2,7 +2,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Nanocoin.MemPool (
-  MemPool(..)
+  MemPool(..),
+  addTransaction
 ) where
 
 import Protolude
