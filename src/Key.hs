@@ -43,6 +43,8 @@ import qualified Data.Serialize as S
 
 import qualified Hash
 
+import System.Directory (createDirectoryIfMissing)
+
 -- | All ECC is done using curve SECP256K1
 sec_p256k1 :: ECC.Curve
 sec_p256k1 = ECC.getCurveByName ECC.SEC_p256k1
@@ -110,6 +112,8 @@ dehexPub bs = do
 deriving instance Generic ECDSA.Signature
 instance S.Serialize ECDSA.Signature
 
+----------------------------------------------------------------
+
 putPublicKey :: S.Putter ECDSA.PublicKey
 putPublicKey pubKey = do 
   let (x,y) = Key.extractPoint pubKey
@@ -121,6 +125,45 @@ getPublicKey = do
   x <- Key.getInteger
   y <- Key.getInteger
   pure $ Key.mkPublicKey (x,y)
+
+encodePublicKey :: ECDSA.PublicKey -> ByteString
+encodePublicKey = S.runPut . putPublicKey
+
+decodePublicKey :: ByteString -> Either [Char] ECDSA.PublicKey
+decodePublicKey = S.runGet getPublicKey  
+
+----------------------------------------------------------------
+
+putPrivateKey :: S.Putter ECDSA.PrivateKey
+putPrivateKey = putInteger . ECDSA.private_d 
+
+getPrivateKey :: S.Get ECDSA.PrivateKey 
+getPrivateKey = ECDSA.PrivateKey sec_p256k1 <$> getInteger
+
+encodePrivateKey :: ECDSA.PrivateKey -> ByteString
+encodePrivateKey = S.runPut . putPrivateKey
+
+decodePrivateKey :: ByteString -> Either [Char] ECDSA.PrivateKey
+decodePrivateKey = S.runGet getPrivateKey  
+
+----------------------------------------------------------------
+
+encodeKeyPair :: KeyPair -> ByteString
+encodeKeyPair (pubKey, privKey) = 
+  S.runPut $ do
+    putPublicKey pubKey
+    putInteger 42
+    putPrivateKey privKey
+  
+decodeKeyPair :: ByteString -> Either [Char] KeyPair
+decodeKeyPair bs = 
+  flip S.runGet bs $ do
+    pubKey <- getPublicKey
+    getInteger 
+    privKey <- getPrivateKey
+    pure $ (pubKey,privKey)
+
+----------------------------------------------------------------
 
 -- | Serialize an Integer
 putInteger :: S.Putter Integer 
@@ -138,3 +181,20 @@ getInteger = do
 
 encodeInteger :: Integer -> ByteString
 encodeInteger = S.runPut . putInteger
+
+----------------------------------------------------------------
+-- Master node keys 
+----------------------------------------------------------------
+
+defaultKeyPath = "key"
+
+writeKey :: Maybe FilePath -> KeyPair -> IO ()
+writeKey Nothing keys = do
+  mkKeyDir defaultKeyPath
+  BS.writeFile defaultKeyPath $ encodeKeyPair keys
+writeKey (Just path) keys = do
+  mkKeyDir path
+  BS.writeFile path $ encodeKeyPair keys
+
+mkKeyDir :: FilePath -> IO ()
+mkKeyDir = createDirectoryIfMissing False 
