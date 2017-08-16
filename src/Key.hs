@@ -16,7 +16,12 @@ module Key (
   extractPoint,
   mkPublicKey,
 
-  -- **Serialization
+  -- ** Node Keys
+  defKeysPath,
+  readKeys,
+  writeKeys,
+
+  -- ** Serialization
   hexPub,
   dehexPub,
   
@@ -43,7 +48,8 @@ import qualified Data.Serialize as S
 
 import qualified Hash
 
-import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>), takeDirectory)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 
 -- | All ECC is done using curve SECP256K1
 sec_p256k1 :: ECC.Curve
@@ -186,15 +192,33 @@ encodeInteger = S.runPut . putInteger
 -- Master node keys 
 ----------------------------------------------------------------
 
-defaultKeyPath = "key"
+defKeysDir :: FilePath
+defKeysDir = "keys"
 
-writeKey :: Maybe FilePath -> KeyPair -> IO ()
-writeKey Nothing keys = do
-  mkKeyDir defaultKeyPath
-  BS.writeFile defaultKeyPath $ encodeKeyPair keys
-writeKey (Just path) keys = do
-  mkKeyDir path
+defKeysFilename :: FilePath
+defKeysFilename = "1"
+
+defKeysPath = defKeysDir </> defKeysFilename
+
+writeKeys :: Maybe FilePath -> KeyPair -> IO ()
+writeKeys Nothing keys = do
+  mkKeysDir defKeysDir 
+  BS.writeFile defKeysPath $ encodeKeyPair keys
+writeKeys (Just path) keys = do
+  mkKeysDir $ takeDirectory path 
   BS.writeFile path $ encodeKeyPair keys
 
-mkKeyDir :: FilePath -> IO ()
-mkKeyDir = createDirectoryIfMissing False 
+readKeys :: FilePath -> IO (Either [Char] KeyPair)
+readKeys fp = do
+  fileExists <- doesFileExist fp
+  if fileExists 
+    then do
+      keysBS <- BS.readFile fp
+      case decodeKeyPair keysBS of
+        Left err -> pure $ Left $ toS err
+        Right kp -> pure $ Right kp
+    else pure $
+      Left "Supplied keys directory invalid"
+
+mkKeysDir :: FilePath -> IO ()
+mkKeysDir = createDirectoryIfMissing False 

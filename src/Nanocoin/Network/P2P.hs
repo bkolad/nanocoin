@@ -79,5 +79,5 @@ logThread funcName msg
       logMsg <- (<> msg) <$> mkThreadDebugPrefix funcName 
       print logMsg 
   | otherwise = return ()
-  where -- | 
+  where
     debug = False
