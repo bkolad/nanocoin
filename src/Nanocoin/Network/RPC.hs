@@ -42,6 +42,9 @@ rpcServer nodeState = do
     -- Queries
     --------------------------------------------------
 
+    get "/address" $ 
+      json $ getNodeAddress nodeState 
+
     get "/blocks" $
       queryNodeState nodeState getBlockChain
 
@@ -83,16 +86,15 @@ rpcServer nodeState = do
                   json $ Map.fromList $ zip ([1..] :: [Int]) invalidTxs 
 
     get "/transfer/:toAddr/:amount" $ do
-      toAddr <- mkAddress <$> param "toAddr"
+      toAddr' <- param "toAddr"
       amount <- param "amount"
-      if Address.validateAddress toAddr
-        then do
+      case mkAddress (encodeUtf8 toAddr') of
+        Left err -> text $ toSL err
+        Right toAddr -> do
           let keys = nodeKeys nodeState
           tx <- liftIO $ T.transferTx keys toAddr amount
           liftIO . p2pSender $ Msg.TransactionMsg tx
           json tx
-        else
-          text "Invalid Address Supplied"
 
 queryNodeState
   :: ToJSON a

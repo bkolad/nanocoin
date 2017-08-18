@@ -17,7 +17,6 @@ module Key (
   mkPublicKey,
 
   -- ** Node Keys
-  defKeysPath,
   readKeys,
   writeKeys,
 
@@ -48,7 +47,7 @@ import qualified Data.Serialize as S
 
 import qualified Hash
 
-import System.FilePath ((</>), takeDirectory)
+import System.FilePath  (takeDirectory)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 
 -- | All ECC is done using curve SECP256K1
@@ -189,21 +188,9 @@ encodeInteger :: Integer -> ByteString
 encodeInteger = S.runPut . putInteger
 
 ----------------------------------------------------------------
--- Master node keys 
+-- Node Keys 
 ----------------------------------------------------------------
 
-defKeysDir :: FilePath
-defKeysDir = "keys"
-
-defKeysFilename :: FilePath
-defKeysFilename = "1"
-
-defKeysPath = defKeysDir </> defKeysFilename
-
-writeKeys :: Maybe FilePath -> KeyPair -> IO ()
-writeKeys Nothing keys = do
-  mkKeysDir defKeysDir 
-  BS.writeFile defKeysPath $ encodeKeyPair keys
 writeKeys (Just path) keys = do
   mkKeysDir $ takeDirectory path 
   BS.writeFile path $ encodeKeyPair keys

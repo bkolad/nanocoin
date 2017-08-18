@@ -5,6 +5,8 @@ module Nanocoin.Network.Node (
 
   initNodeState,
 
+  getNodeAddress,
+
   getBlockChain,
   modifyBlockChain_,
   setBlockChain,
@@ -25,6 +27,9 @@ import Protolude
 import Control.Concurrent.MVar (MVar)
 import Data.Aeson (ToJSON(..)) 
 
+import Address (Address)
+
+import qualified Address
 import qualified Nanocoin.Block as Block
 import qualified Nanocoin.Ledger as Ledger 
 import qualified Nanocoin.MemPool as MemPool
@@ -130,6 +135,9 @@ resetMemPool = flip modifyMemPool_ (const mempty)
 ------------------------------------------------------------------------------- 
 -- NodeState Querying
 -------------------------------------------------------------------------------
+
+getNodeAddress :: NodeState -> Address
+getNodeAddress = Address.deriveAddress . fst . nodeKeys 
 
 getBlockChain :: MonadIO m => NodeState -> m Block.Blockchain
 getBlockChain = liftIO . readMVar . nodeChain

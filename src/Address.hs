@@ -13,35 +13,42 @@ import Protolude
 
 import Crypto.Number.Serialize (i2osp)
 
-import Data.Aeson 
-import Data.Aeson.Types (toJSONKeyText) 
+import Data.Aeson
+import Data.Aeson.Types (toJSONKeyText)
 import qualified Data.ByteArray as BA
 import qualified Data.ByteString.Base58 as B58
 import qualified Data.Serialize as S
 
 import qualified Hash
-import qualified Key 
+import qualified Key
 
 addrSize :: Int
 addrSize = 32
 
 -- | A ledger address, derived from elliptic curve point
-newtype Address = Address { rawAddress :: ByteString } 
+newtype Address = Address { rawAddress :: ByteString }
   deriving (Show, Eq, Ord, Monoid, S.Serialize, IsString)
 
 instance ToJSON Address where
   toJSON (Address bs) = Data.Aeson.String (decodeUtf8 bs)
 
 instance ToJSONKey Address where
-  toJSONKey = toJSONKeyText (decodeUtf8 . rawAddress) 
+  toJSONKey = toJSONKeyText (decodeUtf8 . rawAddress)
 
 -- XXX UNSAFE decode
 instance FromJSON Address where
   parseJSON (String s) = pure $ Address $ encodeUtf8 s
 
+mkAddress :: ByteString -> Either Text Address
+mkAddress addr'
+  | validateAddress addr = Right addr
+  | otherwise = Left "Could not validate address."
+  where
+    addr = Address addr'
+
 -- | UNSAFE: Does not validate ByteString supplied
-mkAddress :: ByteString -> Address
-mkAddress = Address 
+mkAddress' :: ByteString -> Address
+mkAddress' = Address
 
 -- | Derive an address from an ECC public key
 --
@@ -60,17 +67,17 @@ deriveAddress pub = Address (b58 addr)
 -- > addrHash(n) = sha256(sha256(ripemd160(sha256(n))))
 deriveHash :: ByteString -> ByteString
 deriveHash pstr = Hash.sha256Raw'
-                $ Hash.sha256Raw' 
-                $ Hash.ripemd160Raw 
+                $ Hash.sha256Raw'
+                $ Hash.ripemd160Raw
                 $ Hash.sha256Raw' pstr
 
 -- | Validate whether an address is a well-formed B58 encoded hash.
 validateAddress :: Address -> Bool
-validateAddress (Address addr) = 
+validateAddress (Address addr) =
   case unb58 addr of
     Nothing  -> False
     Just sha -> Hash.validateSha' sha
-  
+
 -------------------------------------------------------------------------------
 -- Base58 Encoding
 -------------------------------------------------------------------------------
@@ -83,4 +90,3 @@ unb58 = B58.decodeBase58 B58.bitcoinAlphabet
 
 b58hash :: ByteString -> ByteString
 b58hash = b58 . Hash.sha256Raw'
-

@@ -17,7 +17,7 @@ module Nanocoin.Block (
   checkProofOfWork,
   mineBlock,
   getLatestBlock,
-  
+
   -- ** Validation
   InvalidBlock(..),
   validateBlock,
@@ -42,43 +42,43 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
 import qualified Data.Serialize as S
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T 
+import qualified Data.Text.Encoding as T
 
 import Address
-import Nanocoin.Ledger 
-import Nanocoin.Transaction (Transaction) 
+import Nanocoin.Ledger
+import Nanocoin.Transaction (Transaction)
 
-import qualified Hash 
-import qualified Key 
+import qualified Hash
+import qualified Key
 import qualified Nanocoin.Transaction as T
 import qualified Nanocoin.Ledger as Ledger
 
-type Index      = Int 
+type Index      = Int
 type Timestamp  = Integer
 type Blockchain = [Block]
 
 data BlockHeader = BlockHeader
   { origin       :: Address       -- ^ Address of Block miner
   , previousHash :: ByteString    -- ^ Previous block hash
-  , transactions :: [Transaction] -- ^ List of Transactions 
+  , transactions :: [Transaction] -- ^ List of Transactions
   , nonce        :: Int64         -- ^ Nonce for Proof-of-Work
   } deriving (Eq, Show, Generic, S.Serialize)
 
-data Block = Block 
+data Block = Block
   { index        :: Index         -- ^ Block height
-  , header       :: BlockHeader   -- ^ Block header    
+  , header       :: BlockHeader   -- ^ Block header
   , timestamp    :: Timestamp     -- ^ Creation timestamp
-  , signature    :: ByteString    -- ^ Block signature 
+  , signature    :: ByteString    -- ^ Block signature
   } deriving (Eq, Show, Generic, S.Serialize)
 
 genesisBlock :: Block
-genesisBlock = Block 
+genesisBlock = Block
   { index     = 0
   , header    = genesisBlockHeader
   , timestamp = 0
   , signature = ""
   }
-  where 
+  where
     genesisBlockHeader = BlockHeader
       { origin       = ""
       , previousHash = "0"
@@ -91,91 +91,94 @@ genesisBlock = Block
 -------------------------------------------------------------------------------
 
 -- | Hash a block header, to be used as the prevHash field in Block
-hashBlockHeader :: BlockHeader -> ByteString 
+hashBlockHeader :: BlockHeader -> ByteString
 hashBlockHeader BlockHeader{..} = Hash.getHash $ Hash.sha256 $ BS.concat
   [ rawAddress origin, previousHash, S.encode transactions, B8.pack (show nonce) ]
 
--- | Generate a block hash 
-hashBlock :: Block -> ByteString 
+-- | Generate a block hash
+hashBlock :: Block -> ByteString
 hashBlock = hashBlockHeader . header
 
 -------------------------------------------------------------------------------
 -- Validation
 -------------------------------------------------------------------------------
 
-data InvalidBlock 
+data InvalidBlock
   = InvalidBlockSignature Text
-  | InvalidBlockIndex 
+  | InvalidBlockIndex
   | InvalidBlockHash
+  | InvalidBlockNumTxs
   | InvalidPrevBlockHash
   | InvalidOriginAddress Address
   | InvalidBlockTxs [T.InvalidTx]
   deriving (Show, Eq)
 
-verifyBlockSignature 
-  :: Ledger 
-  -> Block 
-  -> Either InvalidBlock () 
+verifyBlockSignature
+  :: Ledger
+  -> Block
+  -> Either InvalidBlock ()
 verifyBlockSignature l b =
   let hdr = header b in
   case Ledger.lookupAccount (origin hdr) l of
-    Nothing -> Left $ InvalidOriginAddress (origin hdr) 
+    Nothing -> Left $ InvalidOriginAddress (origin hdr)
     Just acc -> case S.decode (signature b) of
       Left err -> Left $ InvalidBlockSignature (toS err)
       Right sig -> do
-        let validSig = Key.verify (fst acc) sig (S.encode hdr) 
-        unless validSig $ 
+        let validSig = Key.verify (fst acc) sig (S.encode hdr)
+        unless validSig $
           Left $ InvalidBlockSignature "Verify failed"
 
 -- | Validate a block before accepting a block as new block in chain
-validateBlock 
-  :: Ledger 
-  -> Block 
+validateBlock
+  :: Ledger
+  -> Block
   -> Block
   -> Either InvalidBlock ()
-validateBlock ledger prevBlock block  
-  | index block /= index prevBlock + 1 = Left InvalidBlockIndex 
+validateBlock ledger prevBlock block
+  | index block /= index prevBlock + 1 = Left InvalidBlockIndex
   | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
   | not (checkProofOfWork block) = Left InvalidBlockHash
-  | otherwise = verifyBlockSignature ledger block
-    
-validateAndApplyBlock 
-  :: Ledger 
+  | null (transactions $ header block) = Left InvalidBlockNumTxs
+  | index block > 1 = verifyBlockSignature ledger block
+  | otherwise = Right () -- Accept block if block index == 1
+
+validateAndApplyBlock
+  :: Ledger
   -> Block
   -> Block
   -> Either InvalidBlock (Ledger, [T.InvalidTx])
-validateAndApplyBlock ledger prevBlock block = do 
+validateAndApplyBlock ledger prevBlock block = do
   validateBlock ledger prevBlock block
   Right $ applyBlock ledger block
 
 -- | Apply block transactions to world state
-applyBlock 
+applyBlock
   :: Ledger
   -> Block
   -> (Ledger, [T.InvalidTx])
-applyBlock ledger = T.applyTransactions ledger . transactions . header 
+applyBlock ledger = T.applyTransactions ledger . transactions . header
 
 -------------------------------------------------------------------------------
--- Block/chain operations 
+-- Block/chain operations
 -------------------------------------------------------------------------------
 
 -- | Generates (mines) a new block using the `proofOfWork` function
-mineBlock 
-  :: MonadIO m  
+mineBlock
+  :: MonadIO m
   => Block          -- ^ Previous Block in chain
   -> Key.PrivateKey -- ^ Miner's private key
-  -> [Transaction]  -- ^ List of transactions 
+  -> [Transaction]  -- ^ List of transactions
   -> m Block
 mineBlock prevBlock privKey txs = do
     timestamp' <- liftIO now
-    signature' <- liftIO $ -- Sign the serialized block header 
-      Key.sign privKey (S.encode blockHeader) 
-    return Block 
-      { index     = index' 
+    signature' <- liftIO $ -- Sign the serialized block header
+      Key.sign privKey (S.encode blockHeader)
+    return Block
+      { index     = index'
       , header    = blockHeader
-      , timestamp = timestamp' 
-      , signature = S.encode signature' 
-      } 
+      , timestamp = timestamp'
+      , signature = S.encode signature'
+      }
   where
     initBlockHeader = BlockHeader
       { origin       = origin'
@@ -185,21 +188,21 @@ mineBlock prevBlock privKey txs = do
       }
 
     index'      = index prevBlock + 1
-    prevHash    = hashBlock prevBlock 
+    prevHash    = hashBlock prevBlock
     origin'     = deriveAddress (Key.toPublic privKey)
     blockHeader = proofOfWork index' initBlockHeader
 
     now :: IO Integer
-    now = round `fmap` getPOSIXTime 
+    now = round `fmap` getPOSIXTime
 
-proofOfWork 
+proofOfWork
   :: Int         -- ^ Difficulty measured by block index
   -> BlockHeader -- ^ Header to hash with nonce parameter
-  -> BlockHeader 
-proofOfWork idx blockHeader = blockHeader { nonce = calcNonce 0 }  
+  -> BlockHeader
+proofOfWork idx blockHeader = blockHeader { nonce = calcNonce 0 }
   where
     difficulty = calcDifficulty idx
-    prefix = toS $ replicate difficulty '0' 
+    prefix = toS $ replicate difficulty '0'
 
     calcNonce n
       | prefix' == prefix = n
@@ -207,20 +210,20 @@ proofOfWork idx blockHeader = blockHeader { nonce = calcNonce 0 }
       where
         headerHash = hashBlockHeader (blockHeader { nonce = n })
         prefix' = BS.take difficulty headerHash
-   
+
 calcDifficulty :: Int -> Int
-calcDifficulty = round . logBase (2 :: Float) . fromIntegral 
+calcDifficulty = round . logBase (2 :: Float) . fromIntegral
 
 checkProofOfWork :: Block -> Bool
 checkProofOfWork block =
-    BS.isPrefixOf prefix $ hashBlock block 
+    BS.isPrefixOf prefix $ hashBlock block
   where
-    difficulty = calcDifficulty $ index block 
-    prefix = toS $ replicate difficulty '0' 
+    difficulty = calcDifficulty $ index block
+    prefix = toS $ replicate difficulty '0'
 
 -- | Get the latest block from the chain
 getLatestBlock :: Blockchain -> Maybe Block
-getLatestBlock = head 
+getLatestBlock = head
 
 -------------------------------------------------------------------------------
 -- Serialization
@@ -237,7 +240,7 @@ instance ToJSON BlockHeader where
 instance ToJSON Block where
   toJSON (Block i bh ts s) =
     object [ "index"  .= i
-           , "header"    .= toJSON bh 
+           , "header"    .= toJSON bh
            , "timestamp" .= toJSON ts
-           , "signature" .= Hash.encode64 s 
+           , "signature" .= Hash.encode64 s
            ]

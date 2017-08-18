@@ -34,8 +34,8 @@ import qualified Data.ByteArray.Encoding as BA
 import qualified Data.ByteString.Base64 as BS64
 import qualified Data.Text.Encoding as T
 
--- | Base16 encoding
-hashSize = 64
+-- | Base16 encoding of 256 bit hash
+hashSize = 32
 
 newtype Hash a = Hash { rawHash :: Digest SHA3_256 }
   deriving (Eq, Ord, BA.ByteArrayAccess)

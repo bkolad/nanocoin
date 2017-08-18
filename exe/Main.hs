@@ -4,24 +4,22 @@ import Protolude
 
 import Data.Maybe (fromMaybe)
 
-import Key (defKeysPath)
 import Nanocoin (initNode)
-import Nanocoin.Network.Peer (mkPeer)
 
 import Options.Applicative
 
 data Config = Config
-  { rpcPort  :: Int
-  , keysPath :: FilePath
+  { rpcPort      :: Int
+  , keysPath     :: Maybe FilePath
   }
 
 defaultConfig :: Config
-defaultConfig = Config 3000 defKeysPath
+defaultConfig = Config 3000 Nothing
 
 main :: IO ()
 main = do
-    Config rpc keys <- execParser (info parser mempty)
-    initNode (mkPeer rpc) keys
+    Config rpc mKeys <- execParser (info parser mempty)
+    initNode rpc mKeys
   where
     portParser :: Parser (Maybe Int)
     portParser = optional $
@@ -37,4 +35,4 @@ main = do
 
     parser = Config
       <$> (fromMaybe (rpcPort defaultConfig) <$> portParser)
-      <*> (fromMaybe (keysPath defaultConfig) <$> keysParser)
+      <*> keysParser
