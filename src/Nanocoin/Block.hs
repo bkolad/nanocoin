@@ -67,7 +67,6 @@ data BlockHeader = BlockHeader
 data Block = Block
   { index        :: Index         -- ^ Block height
   , header       :: BlockHeader   -- ^ Block header
-  , timestamp    :: Timestamp     -- ^ Creation timestamp
   , signature    :: ByteString    -- ^ Block signature
   } deriving (Eq, Show, Generic, S.Serialize)
 
@@ -75,7 +74,6 @@ genesisBlock :: Block
 genesisBlock = Block
   { index     = 0
   , header    = genesisBlockHeader
-  , timestamp = 0
   , signature = ""
   }
   where
@@ -170,13 +168,11 @@ mineBlock
   -> [Transaction]  -- ^ List of transactions
   -> m Block
 mineBlock prevBlock privKey txs = do
-    timestamp' <- liftIO now
     signature' <- liftIO $ -- Sign the serialized block header
       Key.sign privKey (S.encode blockHeader)
     return Block
       { index     = index'
       , header    = blockHeader
-      , timestamp = timestamp'
       , signature = S.encode signature'
       }
   where
@@ -238,9 +234,8 @@ instance ToJSON BlockHeader where
            ]
 
 instance ToJSON Block where
-  toJSON (Block i bh ts s) =
+  toJSON (Block i bh s) =
     object [ "index"  .= i
            , "header"    .= toJSON bh
-           , "timestamp" .= toJSON ts
            , "signature" .= Hash.encode64 s
            ]
