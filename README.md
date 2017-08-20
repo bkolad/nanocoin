@@ -93,14 +93,15 @@ both a command and query entry points. Simply type in
 
 ### TODO:
 
-- [ ] Moar Docs (explain the crypto math a bit better).
+- [ ] Moar Docs (explain the crypto math a bit better, serialization)
+- [ ] Add a test module
 - [ ] Transition from multicast to distributed processing p2p network
   (`cloud-haskell`)
 - [ ] Include a *merkle tree root* of transaction hashes in the block header
   instead of a full list of transactions
 - [ ] Develop a more sophisticated asynchronous messaging protocol after
   transitioning to `cloud-haskell`
-- [ ] Add a CLI for friendlier interaction with a nanocoin node
+- [ ] Add a CLI for friendlier interaction with a nanocoin node than a web browser
 
 Cryptography
 ------------
