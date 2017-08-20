@@ -33,7 +33,7 @@ implementation.
 
 ### Hash Functions
 
-Hash functions, `h(x)`, are pure, *one-way* functions for which every input a unique*,
+Hash functions are pure, *one-way* functions for which every input a unique*,
 fixed-length output is produced, revealing no information about the input. *Strong* 
 hash functions produce output that can be thought of as a digital fingerprint of the 
 input data. The most important thing to note is that good hash functions obfuscate the original 
@@ -72,9 +72,26 @@ secure algorithm with which collisions can be expected 1 out of every 2^128 inpu
 
 ### Finite Fields
 
+A Finite Field `GF(p)` can be described as a cyclic group with a prime order, or `Z modulus p` 
+(the set of integers modulus a prime number *p*), closed over addition (`+`) and multiplication
+(`*`) operations. The result of each operation is `mod p`. 
+
+| `+` | 0 | 1 | 2 |
+| --- | - | - | - |
+| 0 | 0 | 1 | 2 |
+| 1 | 1 | 2 | 0 | 
+| 2 | 2 | 0 | 1 |
+
+| `*` | 0 | 1 | 2 |
+| --- | - | - | - |
+| 0 | 0 | 0 | 0 |
+| 1 | 0 | 1 | 2 | 
+| 2 | 0 | 2 | 1 |
+
+
 ### ECC (ECDSA)
 
-**ECC** (Elliptic Curve Cryptography) is a 
+Elliptic curve cryptography (ECC) is an approach to public-key cryptography based on the algebraic structure of elliptic curves over finite fields.
 
 #### Elliptic Curves
 
@@ -224,17 +241,138 @@ data Transfer = Transfer
 
 This is the whole point of Nanocoin! To transact! The beauty is in the simplicity of this model.
 
-#### Validation
+#### Validation (Transaction)
 
-TODO
+For a node to validate a transaction:
+1) The transaction `signature` must be verified against the transaction issuers private key using EDCSA `verify`.
+2) The transaction header must be applied to the world state, and is valid if the ledger state modification is successful
+
+The validation can be broken down into several parts:
+
+```haskell
+-- | Verifies the transaction signature by looking up the transaction origin by address,
+-- and verifying the signature of the transaction header with the resulting public key.
+verifyTransactionSig :: Transaction -> Ledger -> Either InvalidTx ()
+
+-- | Applies a transaction to the ledger state by validating the transaction against the 
+-- ledger state, and returning the modified the ledger state. 
+applyTransaction :: Transaction -> Ledger -> Either InvalidTx Ledger
+
+-- | If the account attempting to be added already exists, the transaction is invalid;
+-- otherwise, the account is added to the ledger with an initial balance of 1000.
+applyCreateAcount :: CreateAccount -> Ledger -> Either InvalidTx Ledger
+
+-- | If both the sender and receiever accounts exist, and the sender has Nanocoin >= the
+-- the amount being transferred, the transfer of funds is applied to the ledger state.
+applyTransfer :: Transfer -> Ledger -> Either InvalidTx Ledger
+```
+
+Sometimes a transaction is only valid with respect to a ledger state resulting from a transaction that was
+issued previous in the block, and therefore ledger state must be accumulated when applying transaction to the
+ledger state.
 
 ### Blocks
 
-TODO
+Blocks are the representation of a list of transactions that have been validated, which represent an atomic
+modification to the the ledger state. The word *Blockchain* comes from the fact that block headers reference previous
+blocks that have been mined by nodes in the network. This chain starts from a **genesis block**, which represents an
+initial ledger state from which each block in the chain builds upon. *Blockchains* are sequences of blocks 
+representing lists of transactions that should be applied, atomically and sequentially to the ledger state, such 
+that the final state after every block is replicated across all nodes in the network.
 
-#### Validation
+Blocks are represented in Nanocoin with the following data structures:
 
-TODO
+```haskell
+type Index      = Int
+type Timestamp  = Integer
+type Blockchain = [Block]
+
+data BlockHeader = BlockHeader
+  { origin       :: Address       -- ^ Address of Block miner
+  , previousHash :: ByteString    -- ^ Previous block hash
+  , transactions :: [Transaction] -- ^ List of Transactions
+  , nonce        :: Int           -- ^ Nonce for Proof-of-Work
+  } deriving (Eq, Show, Generic, S.Serialize)
+
+data Block = Block
+  { index        :: Index         -- ^ Block height
+  , header       :: BlockHeader   -- ^ Block header
+  , signature    :: ByteString    -- ^ Block ECDSA signature
+  }
+```
+
+Previous block hashes, contained in the `previousHash` field, are used to identify previous blocks in the chain
+because of the way in which a change in even one bit of the data of the previous block will result in an incredibly different hash output. This creates a tamper resistant history due to the fact that before a node will accept a new 
+block, it checks to see if hashing the previous block in it's local storage results in the same hash of the new 
+block it has received. 
+
+In Nanocoin, the blockchain is stored in the `nodeChain :: MVar [Block]` in which the most recent block is stored
+as the `head` of the list. Chains with no blocks are inherently invalid, because a block chain must start with an 
+initial *genesis block*.
+
+The genesis block is defined in Nanocoin as:
+
+```haskell
+genesisBlock :: Block
+genesisBlock = Block
+  { index     = 0
+  , header    = genesisBlockHeader
+  , signature = ""
+  }
+  where
+    genesisBlockHeader = BlockHeader
+      { origin       = ""
+      , previousHash = "0"
+      , transactions = []
+      , nonce        = 0
+      }
+```
+
+#### Validation (Block)
+
+Validation of a new block consists of the following:
+
+1) The block `signature` must be verified against the block `origin` address's public key
+2) The block `index` equal to the previous blocks index + 1
+3) The computed hash of the local previous block must match the `previousHash` field in the new block.
+4) The computed hash of the current block's header must satisfy the difficulty predicate in the PoW Algorithm*
+5) The block must have at least 1 transaction
+6) Each transaction in the block header must be valid
+
+The code that implements this is quite straight forward:
+```haskell
+data InvalidBlock
+  = InvalidBlockSignature Text
+  | InvalidBlockIndex
+  | InvalidBlockHash
+  | InvalidBlockNumTxs
+  | InvalidBlockTx T.InvalidTx
+  | InvalidPrevBlockHash
+  | InvalidFirstBlock
+  | InvalidOriginAddress Address
+  | InvalidBlockTxs [T.InvalidTx]
+
+-- | Validate a block before accepting a block as new block in chain
+validateBlock
+  :: Ledger
+  -> Block
+  -> Block
+  -> Either InvalidBlock ()
+validateBlock ledger prevBlock block
+  | index block /= index prevBlock + 1                 = Left InvalidBlockIndex
+  | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
+  | not (checkProofOfWork block)                       = Left InvalidBlockHash
+  | null (transactions $ header block)                 = Left InvalidBlockNumTxs
+  | otherwise = do
+  
+      -- Verify signature of block
+      verifyBlockSignature ledger block
+      
+      -- Validate all transactions w/ respect to world state
+      first InvalidBlockTx $ do
+        let txs = transactions $ header block
+        T.validateTransactions ledger txs
+```
 
 Networking
 -----------
