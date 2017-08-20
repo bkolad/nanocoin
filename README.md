@@ -742,6 +742,6 @@ above.
 License
 -------
 
-Copyright 2017 Adjoint Inc
+Copyright 2017 Thomas Dietert
 
 Released under Apache 2.0.
