@@ -22,6 +22,86 @@ This document serves as a brief overview of blockchain components and how to
 implement a cryptocurrency from scratch. Basic blockchain knowledge is assumed, but
 brief overviews of the basic components are included.
 
+Running a Node 
+---------------
+
+Install the [Stack](https://docs.haskellstack.org/en/stable/README/) build system:
+
+```bash
+$ stack setup
+$ stack install nanocoin
+$ nanocoin
+```
+
+Running `nanocoin` will spin up a Node with an RPC server running on `localhost:3000`
+and a P2P server communicating with basic UDP Multicast on port `8001`.
+
+You can specify which port th run the RPC server on, and from which directory to load
+a node's public/private ECC key pair. If you do not supply a `KEYS_DIR`, the node will
+generate a random key pair and issue a `CreateAccount` transaction to the network.
+
+`Usage: nanocoin [-p|--rpc-port RPC_PORT] [-k|--keys KEYS_DIR]`
+
+### RPC Interface
+
+Nanocoin's RPC interface is implemented via an HTTP web server that serves as
+both a command and query entry points. Simply type in
+`localhost:XXXX/<cmd-or-query>` to interact with the node1:
+
+#### Queries
+
+`/address`:
+
+    View the address of the current node (derived from the nodes public key)
+
+`/blocks`:
+   
+    View the blocks on the block chain, including their transactions.
+
+`/mempool`:
+ 
+    View the current collected transactions that have not yet been included in a
+    block on the network.
+
+`/ledger`:
+  
+    View the current state of the ledger, representative of all the transactions
+    of all the blocks applied in order to result in a cumulative ledger state.
+
+#### Commands
+
+`/mineBlock`:
+
+    Attempt to mine a block containing the transactions currently in the node's mempool.
+    This will fail if there are no transactions in the mempool or if the node
+    has not joined the network by issuing a `CreateAccount` transaction.
+
+`/createAccount`:
+
+    Issues a `CreateAccount` transaction to the network. This endpoint must be
+    visited for a node to join the network. Otherwise, other nodes in the
+    network will not have this node's public key in memory such that
+    transactions and mined block signatures can be verified.
+
+`/transfer/:toAddress/:amount`
+ 
+    Issues a `Transfer` transaction to the network, transferring the specified 
+    `amount` of Nanocoin from this node's account to another node's account 
+    designated by `toAddress`. If you try to transfer more Nanocoin than you
+    have, the transaction will be rejected during the block mining process and
+    purged from all nodes' mem-pools.
+
+### TODO:
+
+- [ ] Moar Docs (explain the crypto math a bit better).
+- [ ] Transition from multicast to distributed processing p2p network
+  (`cloud-haskell`)
+- [ ] Include a *merkle tree root* of transaction hashes in the block header
+  instead of a full list of transactions
+- [ ] Develop a more sophisticated asynchronous messaging protocol after
+  transitioning to `cloud-haskell`
+- [ ] Add a CLI for friendlier interaction with a nanocoin node
+
 Cryptography
 ------------
 
@@ -73,8 +153,8 @@ computing power.
 
 ### Finite Fields
 
-A Finite Field `GF(p)` can be described as a cyclic group with a prime order, or `Z modulus p` 
-(the set of integers modulus a prime number *p*), closed over addition (`+`) and multiplication
+A Finite Field `GF(p)` can be described as a cyclic group with a prime order, or `Z mod p` 
+(the set of integers `Z` modulus a prime number *p*), closed over addition (`+`) and multiplication
 (`*`) operations. The result of each operation is `mod p`. 
 
 | `+` | 0 | 1 | 2 |
@@ -88,6 +168,9 @@ A Finite Field `GF(p)` can be described as a cyclic group with a prime order, or
 | 0 | 0 | 0 | 0 |
 | 1 | 0 | 1 | 2 | 
 | 2 | 0 | 2 | 1 |
+
+Visit [this link](https://eng.paxos.com/blockchain-101-foundational-math) for a more 
+in depth dive into Finite Fields mathematics.
 
 ### ECC 
 
@@ -123,7 +206,8 @@ data Point = Point Integer Integer
            | PointO -- ^ Point at Infinity
 ```
 
-TODO: Describe the math
+Visit [this link](https://eng.paxos.com/blockchain-101-elliptical-curve-cryptography)
+for a more in depth dive into the math behind elliptic curves.
 
 #### Public/Private Key Pairs
 
@@ -654,26 +738,6 @@ check what your localhost network interface is, type `ifconfig`; The interface
 prefixed by `lo`, e.g. `lo0` is usually the interface of interest. Simply
 replace `lo` with the name of your localhost network interface in the command
 above.
-
-Running a Node 
----------------
-
-Install the [Stack](https://docs.haskellstack.org/en/stable/README/) build system:
-
-```bash
-$ stack setup
-$ stack install nanocoin
-$ nanocoin
-```
-
-Running `nanocoin` will spin up a Node with an RPC server running on `localhost:3000`
-and a P2P server communicating with basic UDP Multicast on port `8001`.
-
-You can specify which port th run the RPC server on, and from which directory to load
-a node's public/private ECC key pair. If you do not supply a `KEYS_DIR`, the node will
-generate a random key pair and issue a `CreateAccount` transaction to the network.
-
-`Usage: nanocoin [-p|--rpc-port RPC_PORT] [-k|--keys KEYS_DIR]`
 
 License
 -------
