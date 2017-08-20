@@ -11,20 +11,20 @@ import Protolude hiding (get, put)
 import Web.Scotty
 
 import qualified Key
-import qualified Nanocoin.Ledger as L 
-import qualified Nanocoin.Transaction as T 
-import qualified Nanocoin.Network.Message as Msg 
+import qualified Nanocoin.Ledger as L
+import qualified Nanocoin.Transaction as T
+import qualified Nanocoin.Network.Message as Msg
 import qualified Nanocoin.Network.Node as Node
 import qualified Nanocoin.Network.P2P as P2P
 import qualified Nanocoin.Network.Peer as Peer
-import qualified Nanocoin.Network.RPC as RPC 
+import qualified Nanocoin.Network.RPC as RPC
 
--- | Initializes a node on the network with it's own copy of 
--- the blockchain, and invokes a p2p server and an http server. 
+-- | Initializes a node on the network with it's own copy of
+-- the blockchain, and invokes a p2p server and an http server.
 initNode :: Int -> Maybe FilePath -> IO ()
 initNode rpcPort mKeysPath = do
   let peer = Peer.mkPeer rpcPort
-  
+
   -- Initialize Node Keys
   keys <- case mKeysPath of
     Nothing -> Key.newKeyPair
@@ -33,21 +33,17 @@ initNode rpcPort mKeysPath = do
       case eNodeKeys of
         Left err -> die err
         Right keys -> pure keys
- 
+
   -- Initialize NodeState
-  nodeState <- Node.initNodeState peer keys 
-  
+  nodeState <- Node.initNodeState peer keys
+
   -- Fork P2P server
   forkIO $ P2P.p2p nodeState
-  -- Attempt to join network
-  joinNetwork (Node.nodeSender nodeState) keys 
+  -- Join network by querying latest block
+  joinNetwork $ Node.nodeSender nodeState
   -- Run RPC server
   RPC.rpcServer nodeState
 
--- | To Join the network, just send a valid CreateAccount transaction
-joinNetwork :: Msg.MsgSender -> Key.KeyPair -> IO ()
-joinNetwork nodeSender keys = do 
-  -- Create account with node keys and broadcast create account 
-  nodeSender . Msg.TransactionMsg =<< T.addAccountTx keys  
-  -- Query the network for the latest block
-  nodeSender $ Msg.QueryBlockMsg 1
+-- | Query the network for the latest block
+joinNetwork :: Msg.MsgSender -> IO ()
+joinNetwork nodeSender = nodeSender $ Msg.QueryBlockMsg 1

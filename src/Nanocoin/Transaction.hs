@@ -15,6 +15,7 @@ module Nanocoin.Transaction (
   InvalidTx(..),
   InvalidTxField(..),
   verifyTxSignature,
+  validateTransactions,
   applyTransaction,
   applyTransactions,
   invalidTxs,
@@ -98,7 +99,7 @@ transferTx (pubKey, privKey) recipient amnt =
 -- Validation & Application of Transactions
 -------------------------------------------------------------------------------
 
-data InvalidTxField 
+data InvalidTxField
   = InvalidTxSignature Text
   | InvalidTransfer Ledger.TransferError
   | InvalidAccount Ledger.AddAccountError
@@ -130,7 +131,14 @@ verifyTxSignature l tx = do
       unless validSig $ Left $ mkInvalidTx $
         InvalidTxSignature "Failed to verify transaction signature"
   where
-    mkInvalidTx = InvalidTx tx 
+    mkInvalidTx = InvalidTx tx
+
+-- | Validate all transactions with respect to world state
+validateTransactions :: Ledger -> [Transaction] -> Either InvalidTx ()
+validateTransactions ledger txs = do
+  case snd (applyTransactions ledger txs) of
+    []     -> Right ()
+    (x:xs) -> Left x
 
 type ApplyM = State [InvalidTx]
 
@@ -159,7 +167,7 @@ applyTransaction ledger tx = do
   case verifyTxSignature ledger tx of
     Left err -> throwError err
     Right _  -> pure ()
- 
+
   -- Apply transaction to world state
   case header tx of
     TxAccount (CreateAccount pubkey) ->

@@ -9,14 +9,11 @@ module Nanocoin.Block (
   Block(..),
   BlockHeader(..),
   Blockchain,
-  hashBlock,
-  hashBlockHeader,
   genesisBlock,
 
-  proofOfWork,
-  checkProofOfWork,
-  mineBlock,
-  getLatestBlock,
+  -- ** Block Hashing
+  hashBlock,
+  hashBlockHeader,
 
   -- ** Validation
   InvalidBlock(..),
@@ -24,8 +21,13 @@ module Nanocoin.Block (
   applyBlock,
   validateAndApplyBlock,
 
-  Hash.encode64,
-  Hash.decode64
+  -- ** Consensus
+  proofOfWork,
+  checkProofOfWork,
+  mineBlock,
+  getLatestBlock,
+
+
 ) where
 
 import Protolude
@@ -84,6 +86,10 @@ genesisBlock = Block
       , nonce        = 0
       }
 
+-- | Get the latest block from the chain
+getLatestBlock :: Blockchain -> Maybe Block
+getLatestBlock = head
+
 -------------------------------------------------------------------------------
 -- Block Hashing
 -------------------------------------------------------------------------------
@@ -106,11 +112,14 @@ data InvalidBlock
   | InvalidBlockIndex
   | InvalidBlockHash
   | InvalidBlockNumTxs
+  | InvalidBlockTx T.InvalidTx
   | InvalidPrevBlockHash
+  | InvalidFirstBlock
   | InvalidOriginAddress Address
   | InvalidBlockTxs [T.InvalidTx]
   deriving (Show, Eq)
 
+-- | Verify a block's ECDSA signature
 verifyBlockSignature
   :: Ledger
   -> Block
@@ -124,7 +133,7 @@ verifyBlockSignature l b =
       Right sig -> do
         let validSig = Key.verify (fst acc) sig (S.encode hdr)
         unless validSig $
-          Left $ InvalidBlockSignature "Verify failed"
+          Left $ InvalidBlockSignature "Could not verify block signature."
 
 -- | Validate a block before accepting a block as new block in chain
 validateBlock
@@ -137,8 +146,25 @@ validateBlock ledger prevBlock block
   | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
   | not (checkProofOfWork block) = Left InvalidBlockHash
   | null (transactions $ header block) = Left InvalidBlockNumTxs
-  | index block > 1 = verifyBlockSignature ledger block
-  | otherwise = Right () -- Accept block if block index == 1
+  | index block == 1 = validateFirstBlock block
+  | otherwise = do
+      -- Verify signature of block
+      verifyBlockSignature ledger block
+      -- Validate all transactions w/ respect to world state
+      first InvalidBlockTx $ do
+        let txs = transactions $ header block
+        T.validateTransactions ledger txs
+
+-- | The first block may only contain CreateAccount transactions
+validateFirstBlock :: Block -> Either InvalidBlock ()
+validateFirstBlock b
+  | all isCreateAccountTx (transactions $ header b) = Right ()
+  | otherwise = Left InvalidFirstBlock
+  where
+    isCreateAccountTx tx =
+      case T.header tx of
+        T.TxAccount (T.CreateAccount _) -> True
+        T.TxTransfer _ -> False
 
 validateAndApplyBlock
   :: Ledger
@@ -157,7 +183,7 @@ applyBlock
 applyBlock ledger = T.applyTransactions ledger . transactions . header
 
 -------------------------------------------------------------------------------
--- Block/chain operations
+-- Consensus
 -------------------------------------------------------------------------------
 
 -- | Generates (mines) a new block using the `proofOfWork` function
@@ -207,6 +233,7 @@ proofOfWork idx blockHeader = blockHeader { nonce = calcNonce 0 }
         headerHash = hashBlockHeader (blockHeader { nonce = n })
         prefix' = BS.take difficulty headerHash
 
+-- | difficulty(block) = round(ln(index(block)))
 calcDifficulty :: Int -> Int
 calcDifficulty = round . logBase (2 :: Float) . fromIntegral
 
@@ -216,10 +243,6 @@ checkProofOfWork block =
   where
     difficulty = calcDifficulty $ index block
     prefix = toS $ replicate difficulty '0'
-
--- | Get the latest block from the chain
-getLatestBlock :: Blockchain -> Maybe Block
-getLatestBlock = head
 
 -------------------------------------------------------------------------------
 -- Serialization

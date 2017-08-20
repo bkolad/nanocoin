@@ -66,10 +66,10 @@ deriveAddress pub = Address (b58 addr)
 --
 -- > addrHash(n) = sha256(sha256(ripemd160(sha256(n))))
 deriveHash :: ByteString -> ByteString
-deriveHash pstr = Hash.sha256Raw'
-                $ Hash.sha256Raw'
-                $ Hash.ripemd160Raw
-                $ Hash.sha256Raw' pstr
+deriveHash = Hash.sha256Raw'
+           . Hash.sha256Raw'
+           . Hash.ripemd160Raw
+           . Hash.sha256Raw'
 
 -- | Validate whether an address is a well-formed B58 encoded hash.
 validateAddress :: Address -> Bool
