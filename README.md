@@ -33,7 +33,7 @@ implementation.
 
 ### Hash Functions
 
-Hash functions are pure, *one-way* functions for which every input a unique*,
+Hash functions are pure, *one-way* functions for which every input a unique,
 fixed-length output is produced, revealing no information about the input. *Strong* 
 hash functions produce output that can be thought of as a digital fingerprint of the 
 input data. The most important thing to note is that good hash functions obfuscate the original 
@@ -68,7 +68,8 @@ the former with a more secure hashing algorithm and the latter with the adoption
 
 Sha3_256 (Secure Hash Algorithm 3) is one of the more popular hashing algorithms, in which every 
 input is converted into a 256 bit output. It's implementation is very complex, but yields a fast and
-secure algorithm with which collisions can be expected 1 out of every 2^128 inputs.
+secure algorithm with which collisions will not feasibly happen given todays
+computing power. 
 
 ### Finite Fields
 
@@ -88,27 +89,131 @@ A Finite Field `GF(p)` can be described as a cyclic group with a prime order, or
 | 1 | 0 | 1 | 2 | 
 | 2 | 0 | 2 | 1 |
 
+### ECC 
 
-### ECC (ECDSA)
-
-Elliptic curve cryptography (ECC) is an approach to public-key cryptography based on the algebraic structure of elliptic curves over finite fields.
+Elliptic curve cryptography (ECC) is an approach to public-key cryptography based on the algebraic 
+structure of elliptic curves over finite fields with very large prime orders. This version of public key
+cryptography provides the benefit of equal security with the public and private
+keys needing fewer bits than tradition cryptographic schemes based on the discrete log problem. 
 
 #### Elliptic Curves
 
-- `y^2 = x^3 + ax + b`
-- SECP256k1, `y^2 = x^3 + 7`
+In the `cryptonite` library, a `Curve` and `Point` are defined as follows:
+
+```haskell
+-- | Define either a binary curve or a prime curve.
+data Curve = | CurveFP  CurvePrime  -- ^ 𝔽p
+
+-- | Define an elliptic curve in 𝔽p.
+-- The first parameter is the Prime Number.
+data CurvePrime = CurvePrime Integer CurveCommon
+
+-- | Define common parameters in a curve definition
+-- of the form: y^2 = x^3 + ax + b.
+data CurveCommon = CurveCommon
+  { ecc_a :: Integer -- ^ curve parameter a
+  , ecc_b :: Integer -- ^ curve parameter b
+  , ecc_g :: Point   -- ^ base (generator) point
+  , ecc_n :: Integer -- ^ order of G
+  , ecc_h :: Integer -- ^ cofactor
+  }
+
+-- | Define a point on a curve.
+data Point = Point Integer Integer
+           | PointO -- ^ Point at Infinity
+```
+
+TODO: Describe the math
 
 #### Public/Private Key Pairs
 
-- Public Key
-- Private Key
+ECC defines public keys to be a point on the Elliptic Curve, and a private key
+as a secret number *k* within the order of the curve (e.g. if the curve's order is
+17, the private key will be a number *n* ∈ {0,.. ,17}). Public keys are derived from 
+private keys by multiplying the generator point *G* by the private scalar *k*. 
 
-#### Digital Signature Algorithm
+This scheme yields a result similar to the discrete log problem, but instead of
+it being difficult to recover a secret exponent *x* in the equation `g^x mod p`,
+it is difficult to recover the secret scalar *k* in the equation `Gk mod p`.
 
-- Sign
-- Verify
+In the `cryptonite` library, these keys are defined with the following data
+structures: 
+
+Publie Key:
+```haskell
+-- | ECDSA Public Key.
+data PublicKey = PublicKey
+  { public_curve :: Curve
+  , public_q     :: PublicPoint
+  } 
+```
+
+Private Key:
+```haskell
+type PrivateNumber = Integer
+
+-- | ECDSA Private Key.
+data PrivateKey = PrivateKey
+  { private_curve :: Curve
+  , private_d     :: PrivateNumber
+  } 
+```
+
+#### Digital Signature Algorithm (ECDSA)
+
+To sign a piece of data is to provide the two resulting integers from the ECDSA
+(computed through a hash function). Inputs for the signing function are:
+
+- The data as a string of bytes, *msg*.
+- The elliptic curve private-key, *d*.
+
+The **signing** algorithm will be described in terms of the curve Secp256k1, where
+*p* is the secp256k1 prime, and *G* is it’s respective generator point:
+
+1. Hash the document byte stream such that `z = H(msg)`
+2. Generate a random value *k* ∈ {1,..,*p*−1}
+3. Compute `(x,y) = kG`
+4. Compute `r = x mod p`, if `r = 0` go back to step 1
+5. Compute `s = (z + rd) / k` , if `s = 0` go back to step 1
+
+The resulting (*r*,*s*) pair is the signature.
+
+To **verify** the *signature* resulting from the signing algorithm the public
+key corresponding to the private key used in the signing algorihthm is used.
+Inputs to the verification algorithm are:
+
+- The data as a string of bytes, *msg*
+- The signature, (*r*,*s*)
+- The EC public key *Q*
+
+The output of the verification algorithm is simply a boolean indicating whether
+the signature provide is indeed a valid signature of the given data correspoding 
+to the private key with which it was signed. The algorithm is as follows:
+
+1. Compute `z = H(msg)`
+2. Compute `t = (z mod p) / s`
+3. Compute `u = (r mod p) / s`
+4. Let `(x,y) = tG + uQ`
+5. Verify that `r = x mod p`
+
+To sign and verify a piece of data using cryptonite:
+```haskell
+ghci> import Crypto.Number.Hash (SHA3_256)
+ghci> import Crypto.PubKey.ECC.ECDSA (sign, verify)
+ghci> import Crypto.PubKey.ECC.Generate (generate)
+ghci> import Crypto.PubKey.ECC.Types (getCurveByName, SEC_p256k1)
+ghci> let msg = "hello world" :: ByteString
+ghci> let secp256k1 = getCurveByName SEC_p256k1
+ghci> (pubKey, privKey) <- generate secp256k1
+ghci> sig <- sign privKey SHA3_256 msg
+ghci> verify SHA3_256 pubKey sig msg
+True 
+```
 
 ### Merkle Trees
+
+TODO: Implementation and docs. Reference:
+https://github.com/adjoint-io/merkle-tree
 
 Distributed Ledgers (A.K.A. Blockchain)
 ---------------------------------------
@@ -335,7 +440,7 @@ Validation of a new block consists of the following:
 1) The block `signature` must be verified against the block `origin` address's public key
 2) The block `index` equal to the previous blocks index + 1
 3) The computed hash of the local previous block must match the `previousHash` field in the new block.
-4) The computed hash of the current block's header must satisfy the difficulty predicate in the PoW Algorithm*
+4) The computed hash of the current block's header must satisfy the difficulty predicate in the PoW Algorithm
 5) The block must have at least 1 transaction
 6) Each transaction in the block header must be valid
 
@@ -388,19 +493,57 @@ Multicast UDP chatter protocol to a distributed p2p network implemented using `c
 
 ```
 data NodeState = NodeState
-  { nodeConfig   :: Peer
-  , nodeChain    :: MVar Block.Blockchain
-  , nodeKeys     :: KeyPair
-  , nodeSender   :: MsgSender 
-  , nodeReceiver :: MsgReceiver
-  , nodeLedger   :: MVar Ledger.Ledger
-  , nodeMemPool  :: MVar MemPool.MemPool
+  { nodeConfig   :: Peer                   -- ^ P2P info (rpc port, p2p port)
+  , nodeChain    :: MVar Block.Blockchain  -- ^ In-memory Blockchain
+  , nodeKeys     :: KeyPair                -- ^ Node key pair
+  , nodeSender   :: MsgSender              -- ^ Function to broadcast a P2P message
+  , nodeReceiver :: MsgReceiver            -- ^ The source of network messages
+  , nodeLedger   :: MVar Ledger.Ledger     -- ^ In-memory ledger state
+  , nodeMemPool  :: MVar MemPool.MemPool   -- ^ Mempool to collect transactions
   } 
 ```
 
+At the core of each node is the node state. This datatype carries data relevant
+to the operation of the node. The three `MVar`s are the in-memory representation
+of the blockchain, the ledger, and the transaction pool. The rest of the values
+are unchanging node configuration data.
+
 #### MemPool
 
-TODO
+A *transaction mem-pool* is simply a data store for transaction broadcast to the
+network. Each node keeps a list of the transaction that have been broadcast, and
+updates this list each time a new `TransactionMsg` arrives from the
+`MsgReceiver`; There are three times when a node's mempool is modified:
+
+1) When a node receives a `TransactionMsg` with a valid transaction, it adds it
+to the mempool
+2) Whenever a new block is accepted and applied to the ledger state,
+a node purges it's mempool of the transaction that were included in the new
+block. 
+3) When a new block is being mined, invalid transactions in the mempool are
+removed from the mempool.
+
+Nanocoin defines a Mempool as a newtype wrapper around a list.
+
+```haskell
+newtype MemPool = MemPool
+  { unMemPool :: [Transaction]
+  } deriving (Show, Eq, Generic, Monoid, ToJSON)
+```
+
+and supports 2 operations over the mempool:
+
+```haskell
+addTransaction :: Transaction -> MemPool -> MemPool
+addTransaction tx (MemPool pool) = MemPool (pool ++ [tx])
+
+removeTransactions :: [Transaction] -> MemPool -> MemPool
+removeTransactions txs (MemPool pool) = MemPool $ pool \\ txs
+```
+
+The node's `MemPool` is stored in an `MVar` such that it persists the entire
+duration of a node's execution, and can be potentially modified by multiple
+processes safely.
 
 ### Messaging Protocol
 
@@ -425,21 +568,23 @@ handleMessage nodeState msg = do
     ...
 ```
 
-1) `QueryBlockMsg index`
-    a. If `NodeState - nodeChain` has a block with the given index, broadcast the block to the network
-    b. Else log the error and do nothing
-2) `BlockMsg block`
-    a. If genesis block is instantiated, attempt to apply the block to the ledger state.
-    b. Else log the error and do nothing
-3) `TransactionMsg transaction`
-    a. If the transaction signature is valid, add it to the node's mempool
-    b. Else log the error and do nothing
+1. `QueryBlockMsg index`
+   1. If `NodeState - nodeChain` has a block with the given index, broadcast the block to the network
+   2. Else log the error and do nothing
+
+2. `BlockMsg block`
+   1. If genesis block is instantiated, attempt to apply the block to the ledger state.
+   2. Else log the error and do nothing
+
+3. `TransactionMsg transaction`
+   1. If the transaction signature is valid, add it to the node's mempool
+   2. Else log the error and do nothing
 
 ### Consensus Algorithm
 
 Nanocoin uses a simple proof of work (PoW) approach to chain concensus: 
 
-To mine a block on the chain, a node must compute a nonce* such that that 
+To mine a block on the chain, a node must compute a nonce such that that 
 resulting hash of the block being mined begins with a number of 0's equal 
 to `round(ln(n))` where `n` is the length of the current chain (i.e. the index
 of the current block being mined); This predicate is known as the *block difficulty*. 
@@ -447,7 +592,7 @@ For this PoW implementation the average nonce computed is `16^n`, so when the le
 of the chain surpasses 12 (`round(ln(n)) == 4`) it begins to take several seconds
 to mine each block. As `n` surpasses 23, mining a block could take well over 10 minutes. 
 
-Note*: A *nonce* is an arbitrary positive number repeatedly incremented and added to the
+**Note**: A *nonce* is an arbitrary positive number repeatedly incremented and added to the
 block header to produce a hash that has the correct number of leading zeros, denoted by 
 block difficulty.
 
