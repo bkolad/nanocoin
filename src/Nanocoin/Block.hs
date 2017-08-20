@@ -109,7 +109,7 @@ hashBlock = hashBlockHeader . header
 
 data InvalidBlock
   = InvalidBlockSignature Text
-  | InvalidBlockIndex
+  | InvalidBlockIndex Int
   | InvalidBlockHash
   | InvalidBlockNumTxs
   | InvalidBlockTx T.InvalidTx
@@ -142,7 +142,7 @@ validateBlock
   -> Block
   -> Either InvalidBlock ()
 validateBlock ledger prevBlock block
-  | index block /= index prevBlock + 1 = Left InvalidBlockIndex
+  | index block /= index prevBlock + 1 = Left $ InvalidBlockIndex (index block)
   | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
   | not (checkProofOfWork block) = Left InvalidBlockHash
   | null (transactions $ header block) = Left InvalidBlockNumTxs

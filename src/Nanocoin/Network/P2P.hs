@@ -55,7 +55,10 @@ handleMsg nodeState msg = do
       mPrevBlock <- Node.getLatestBlock nodeState
       case mPrevBlock of
         Nothing -> putText "handleMessage: No Genesis block found."
-        Just prevBlock -> Node.applyBlock nodeState prevBlock block
+        Just prevBlock -> do
+          Node.applyBlock nodeState prevBlock block
+          -- Ask if there is a more recent block
+          nodeSender $ Msg.QueryBlockMsg (Block.index block + 1)
 
     Msg.TransactionMsg tx -> do
       ledger <- Node.getLedger nodeState
