@@ -30,10 +30,14 @@ data TransferError
   = InvalidSender Address
   | InvalidReceiver Address
   | InsufficientBalance Address Balance
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+instance ToJSON TransferError
 
 data AddAccountError = AccountExists Address
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+instance ToJSON AddAccountError
 
 -- | Datatype storing the holdings of addresses
 newtype Ledger = Ledger

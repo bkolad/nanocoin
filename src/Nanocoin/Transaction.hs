@@ -104,10 +104,10 @@ data InvalidTxField
   | InvalidTransfer Ledger.TransferError
   | InvalidAccount Ledger.AddAccountError
   | InvalidTranferIssuer Address
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, ToJSON)
 
 data InvalidTx = InvalidTx Transaction InvalidTxField
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic, ToJSON)
 
 verifyTxSignature
   :: Ledger

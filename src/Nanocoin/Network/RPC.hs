@@ -9,6 +9,7 @@ import Data.Aeson hiding (json)
 import Data.Text (intercalate)
 import Web.Scotty
 
+import Data.List ((\\))
 import qualified Data.Map as Map
 
 import Address
@@ -65,26 +66,30 @@ rpcServer nodeState = do
       case mPrevBlock of
         Nothing -> text "Cannot mine block without a genesis block"
         Just prevBlock -> do
-          let privKey = snd $ nodeKeys nodeState
-          txs <- MP.unMemPool <$> getMemPool nodeState
-          block <- B.mineBlock prevBlock privKey txs
 
-          -- Are block transactions valid?
+          -- Validate transactions in mempool, discarding the invalid
           ledger <- getLedger nodeState
+          txs <- MP.unMemPool <$> getMemPool nodeState
+          let (ledger', invalidTxErrs) = T.applyTransactions ledger txs
+          let invalidTxs = map (\(T.InvalidTx tx _) -> tx) invalidTxErrs
+          modifyMemPool_ nodeState $ MP.removeTransactions invalidTxs
+          let validTxs = txs \\ invalidTxs
+
+          -- Attempt to mine block with the valid transactions
+          let privKey = snd $ nodeKeys nodeState
+          block <- B.mineBlock prevBlock privKey validTxs
           case B.validateAndApplyBlock ledger prevBlock block of
             Left err -> text $ show err
-            Right (_, invalidTxErrs)
-              -- If block & txs valid, broadcast block
-              | null invalidTxErrs -> do
-                  putText $ "Generated block with hash:\n\t"
-                    <> decodeUtf8 (B.hashBlock block)
-                  liftIO $ p2pSender $ Msg.BlockMsg block
-                  json block
-              -- If invalid, remove invalid txs from mempool
-              | otherwise -> do
-                  let invalidTxs = T.invalidTxs invalidTxErrs
-                  modifyMemPool_ nodeState $ MP.removeTransactions invalidTxs
-                  json $ Map.fromList $ zip ([1..] :: [Int]) invalidTxs
+            Right (_, []) -> do
+              putText $ "Generated block with hash:\n\t"
+                <> decodeUtf8 (B.hashBlock block)
+              -- Broadcast block message to network
+              liftIO $ p2pSender $ Msg.BlockMsg block
+              -- Display the new block
+              json block
+            Right (_, invalidTxErrs') ->
+              -- This shouldn't happen
+              json $ Map.fromList $ zip ([1..] :: [Int]) invalidTxErrs'
 
     get "/createAccount" $ do
       ledger <- getLedger nodeState
