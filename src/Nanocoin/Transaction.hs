@@ -4,12 +4,9 @@
 module Nanocoin.Transaction (
   Transaction(..),
   TransactionHeader(..),
-  Transfer(..),
-  CreateAccount(..),
 
   -- ** Construction
-  addAccountTx,
-  transferTx,
+  transferTransaction,
 
   -- ** Validation
   InvalidTx(..),
@@ -40,20 +37,11 @@ import qualified Nanocoin.Ledger as Ledger
 
 type Timestamp = Integer
 
-data Transfer = Transfer
-  { issuer    :: Address
+data TransactionHeader = Transfer
+  { senderKey :: Key.PublicKey
   , recipient :: Address
   , amount    :: Int
-  } deriving (Eq, Show, Generic, S.Serialize, ToJSON)
-
-newtype CreateAccount = CreateAccount
-  { publicKey :: Key.PublicKey
-  } deriving (Eq, Show, Generic)
-
-data TransactionHeader
-  = TxTransfer Transfer
-  | TxAccount CreateAccount
-  deriving (Eq, Show, Generic, S.Serialize, ToJSON)
+  } deriving (Eq, Show)
 
 data Transaction = Transaction
   { header    :: TransactionHeader
@@ -78,22 +66,13 @@ transaction privKey txHdr = do
   txSig <- Key.sign privKey $ hashTxHeader txHdr
   pure $ Transaction txHdr $ S.encode txSig
 
-addAccountTx
-  :: Key.KeyPair
-  -> IO Transaction
-addAccountTx (pubKey, privKey) =
-  transaction privKey (TxAccount $ CreateAccount pubKey)
-
-transferTx
+transferTransaction
   :: Key.KeyPair -- ^ Key pair of transfer issuer
   -> Address     -- ^ Address of recipient
   -> Int         -- ^ Transfer amount
   -> IO Transaction
-transferTx (pubKey, privKey) recipient amnt =
-    transaction privKey (TxTransfer transfer')
-  where
-    transfer' = Transfer issuer recipient amnt
-    issuer = Address.deriveAddress pubKey
+transferTransaction (pubKey, privKey) recipient amnt =
+  transaction privKey $ Transfer pubKey recipient amnt
 
 -------------------------------------------------------------------------------
 -- Validation & Application of Transactions
@@ -102,8 +81,6 @@ transferTx (pubKey, privKey) recipient amnt =
 data InvalidTxField
   = InvalidTxSignature Text
   | InvalidTransfer Ledger.TransferError
-  | InvalidAccount Ledger.AddAccountError
-  | InvalidTranferIssuer Address
   deriving (Show, Eq, Generic, ToJSON)
 
 data InvalidTx = InvalidTx Transaction InvalidTxField
@@ -115,19 +92,11 @@ verifyTxSignature
   -> Either InvalidTx ()
 verifyTxSignature l tx = do
   let txHeader = header tx
-  pubKey <- case txHeader of
-    -- Create account transactions are self-signed
-    TxAccount (CreateAccount pubKey) -> Right pubKey
-    -- To transfer, the tx hash must be signed by the issuer
-    TxTransfer (Transfer issuer _ _) ->
-      case Ledger.lookupAccount issuer l of
-        Nothing -> Left $ mkInvalidTx $ InvalidTranferIssuer issuer
-        Just acc -> Right $ fst acc
   case S.decode (signature tx) of
     Left err -> Left $ mkInvalidTx $ InvalidTxSignature (toS err)
     Right sig -> do
       let txHash = hashTxHeader txHeader
-      let validSig = Key.verify pubKey sig txHash
+      let validSig = Key.verify (senderKey txHeader) sig txHash
       unless validSig $ Left $ mkInvalidTx $
         InvalidTxSignature "Failed to verify transaction signature"
   where
@@ -135,7 +104,7 @@ verifyTxSignature l tx = do
 
 -- | Validate all transactions with respect to world state
 validateTransactions :: Ledger -> [Transaction] -> Either InvalidTx ()
-validateTransactions ledger txs = do
+validateTransactions ledger txs =
   case snd (applyTransactions ledger txs) of
     []     -> Right ()
     (x:xs) -> Left x
@@ -161,7 +130,9 @@ applyTransaction
   :: Ledger
   -> Transaction
   -> ApplyM Ledger
-applyTransaction ledger tx = do
+applyTransaction ledger tx@(Transaction hdr sig) = do
+
+  let (Transfer pk to amnt) = hdr
 
   -- Verify Transaction Signature
   case verifyTxSignature ledger tx of
@@ -169,19 +140,12 @@ applyTransaction ledger tx = do
     Right _  -> pure ()
 
   -- Apply transaction to world state
-  case header tx of
-    TxAccount (CreateAccount pubkey) ->
-      case Ledger.addAccount pubkey ledger of
-        Left err -> do
-          throwError $ InvalidTx tx $ InvalidAccount err
-          pure ledger
-        Right ledger' -> pure ledger'
-    TxTransfer (Transfer from to amnt) ->
-      case Ledger.transfer ledger from to amnt of
-        Left err -> do
-          throwError $ InvalidTx tx $ InvalidTransfer err
-          pure ledger
-        Right ledger' -> pure ledger'
+  let from = deriveAddress pk
+  case Ledger.transfer ledger from to amnt of
+    Left err -> do
+      throwError $ InvalidTx tx $ InvalidTransfer err
+      pure ledger
+    Right ledger' -> pure ledger'
 
 invalidTxs :: [InvalidTx] -> [Transaction]
 invalidTxs itxs = flip map itxs $ \(InvalidTx tx _) -> tx
@@ -190,22 +154,29 @@ invalidTxs itxs = flip map itxs $ \(InvalidTx tx _) -> tx
 -- Serialization
 -------------------------------------------------------------------------------
 
-instance ToJSON CreateAccount where
-  toJSON (CreateAccount pubKey) =
-    let (x,y) = Key.extractPoint pubKey in
-    object [ "tag" .= ("CreateAccount" :: Text)
-           , "contents" .=
-               object [ "x" .= (x :: Integer)
-                      , "y" .= (y :: Integer)
-                      ]
+instance S.Serialize TransactionHeader where
+  put (Transfer pk to amnt) = do
+    Key.putPublicKey pk
+    S.put to
+    S.put amnt
+  get = Transfer
+    <$> Key.getPublicKey
+    <*> S.get
+    <*> S.get
+
+instance ToJSON TransactionHeader where
+  toJSON (Transfer pk to amnt) =
+    let (x,y) = Key.extractPoint pk in
+    object [ "senderKey" .= object
+               [ "x" .= (x :: Integer)
+               , "y" .= (y :: Integer)
+               ]
+           , "recipient" .= toJSON to
+           , "amount"    .= toJSON amnt
            ]
 
-instance S.Serialize CreateAccount where
-  put (CreateAccount pubKey) = Key.putPublicKey pubKey
-  get = CreateAccount <$> Key.getPublicKey
-
 instance ToJSON Transaction where
-  toJSON (Transaction h s) =
-    object [ "header"    .= h
-           , "signature" .= Hash.encode64 s
+  toJSON (Transaction hdr sig) =
+    object [ "header"    .= toJSON hdr
+           , "signature" .= Hash.encode64 sig
            ]

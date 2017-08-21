@@ -60,11 +60,11 @@ type Timestamp  = Integer
 type Blockchain = [Block]
 
 data BlockHeader = BlockHeader
-  { origin       :: Address       -- ^ Address of Block miner
+  { origin       :: Key.PublicKey -- ^ Address of Block miner
   , previousHash :: ByteString    -- ^ Previous block hash
   , transactions :: [Transaction] -- ^ List of Transactions
   , nonce        :: Int64         -- ^ Nonce for Proof-of-Work
-  } deriving (Eq, Show, Generic, S.Serialize)
+  } deriving (Eq, Show)
 
 data Block = Block
   { index        :: Index         -- ^ Block height
@@ -72,15 +72,15 @@ data Block = Block
   , signature    :: ByteString    -- ^ Block signature
   } deriving (Eq, Show, Generic, S.Serialize)
 
-genesisBlock :: Block
-genesisBlock = Block
+genesisBlock :: Key.PublicKey -> Block
+genesisBlock pubKey = Block
   { index     = 0
   , header    = genesisBlockHeader
   , signature = ""
   }
   where
     genesisBlockHeader = BlockHeader
-      { origin       = ""
+      { origin       = pubKey
       , previousHash = "0"
       , transactions = []
       , nonce        = 0
@@ -96,8 +96,13 @@ getLatestBlock = head
 
 -- | Hash a block header, to be used as the prevHash field in Block
 hashBlockHeader :: BlockHeader -> ByteString
-hashBlockHeader BlockHeader{..} = Hash.getHash $ Hash.sha256 $ BS.concat
-  [ rawAddress origin, previousHash, S.encode transactions, B8.pack (show nonce) ]
+hashBlockHeader BlockHeader{..} =
+  Hash.getHash $ Hash.sha256 $
+    BS.concat [ rawAddress (deriveAddress origin)
+              , previousHash
+              , S.encode transactions
+              , B8.pack (show nonce)
+              ]
 
 -- | Generate a block hash
 hashBlock :: Block -> ByteString
@@ -115,25 +120,21 @@ data InvalidBlock
   | InvalidBlockTx T.InvalidTx
   | InvalidPrevBlockHash
   | InvalidFirstBlock
-  | InvalidOriginAddress Address
   | InvalidBlockTxs [T.InvalidTx]
   deriving (Show, Eq)
 
 -- | Verify a block's ECDSA signature
 verifyBlockSignature
-  :: Ledger
-  -> Block
+  :: Block
   -> Either InvalidBlock ()
-verifyBlockSignature l b =
-  let hdr = header b in
-  case Ledger.lookupAccount (origin hdr) l of
-    Nothing -> Left $ InvalidOriginAddress (origin hdr)
-    Just acc -> case S.decode (signature b) of
-      Left err -> Left $ InvalidBlockSignature (toS err)
-      Right sig -> do
-        let validSig = Key.verify (fst acc) sig (S.encode hdr)
-        unless validSig $
-          Left $ InvalidBlockSignature "Could not verify block signature."
+verifyBlockSignature b = do
+  let originKey = origin $ header b
+  case S.decode (signature b) of
+    Left err -> Left $ InvalidBlockSignature (toS err)
+    Right sig -> do
+      let validSig = Key.verify originKey sig (S.encode $ header b)
+      unless validSig $
+        Left $ InvalidBlockSignature "Could not verify block signature."
 
 -- | Validate a block before accepting a block as new block in chain
 validateBlock
@@ -146,25 +147,13 @@ validateBlock ledger prevBlock block
   | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
   | not (checkProofOfWork block) = Left InvalidBlockHash
   | null (transactions $ header block) = Left InvalidBlockNumTxs
-  | index block == 1 = validateFirstBlock block
   | otherwise = do
       -- Verify signature of block
-      verifyBlockSignature ledger block
+      verifyBlockSignature block
       -- Validate all transactions w/ respect to world state
       first InvalidBlockTx $ do
         let txs = transactions $ header block
         T.validateTransactions ledger txs
-
--- | The first block may only contain CreateAccount transactions
-validateFirstBlock :: Block -> Either InvalidBlock ()
-validateFirstBlock b
-  | all isCreateAccountTx (transactions $ header b) = Right ()
-  | otherwise = Left InvalidFirstBlock
-  where
-    isCreateAccountTx tx =
-      case T.header tx of
-        T.TxAccount (T.CreateAccount _) -> True
-        T.TxTransfer _ -> False
 
 validateAndApplyBlock
   :: Ledger
@@ -211,7 +200,7 @@ mineBlock prevBlock privKey txs = do
 
     index'      = index prevBlock + 1
     prevHash    = hashBlock prevBlock
-    origin'     = deriveAddress (Key.toPublic privKey)
+    origin'     = Key.toPublic privKey
     blockHeader = proofOfWork index' initBlockHeader
 
     now :: IO Integer
@@ -248,9 +237,25 @@ checkProofOfWork block =
 -- Serialization
 -------------------------------------------------------------------------------
 
+instance S.Serialize BlockHeader where
+  put (BlockHeader opk ph txs n) = do
+    Key.putPublicKey opk
+    S.put ph
+    S.put txs
+    S.put n
+  get = BlockHeader
+    <$> Key.getPublicKey
+    <*> S.get
+    <*> S.get
+    <*> S.get
+
 instance ToJSON BlockHeader where
-  toJSON (BlockHeader o ph txs n) =
-    object [ "origin"       .= Hash.encode64 (rawAddress o)
+  toJSON (BlockHeader opk ph txs n) =
+    let (x,y) = Key.extractPoint opk in
+    object [ "origin"       .= object
+               [ "x" .= (x :: Integer)
+               , "y" .= (y :: Integer)
+               ]
            , "previousHash" .= decodeUtf8 ph
            , "transactions" .= toJSON txs
            , "nonce"        .= toJSON n

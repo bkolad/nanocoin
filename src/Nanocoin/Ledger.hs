@@ -4,10 +4,6 @@
 module Nanocoin.Ledger (
   Ledger,
 
-  addAccount,
-  AddAccountError,
-  lookupAccount,
-
   transfer,
   TransferError,
 ) where
@@ -24,55 +20,41 @@ import qualified Key
 
 type Balance = Int
 
-type Account = (Key.PublicKey, Balance)
-
 data TransferError
-  = InvalidSender Address
-  | InvalidReceiver Address
+  = AddressDoesNotExist Address
+  | InvalidTransferAmount Int
   | InsufficientBalance Address Balance
   deriving (Eq, Show, Generic)
 
 instance ToJSON TransferError
 
-data AddAccountError = AccountExists Address
-  deriving (Eq, Show, Generic)
-
-instance ToJSON AddAccountError
-
 -- | Datatype storing the holdings of addresses
 newtype Ledger = Ledger
-  { unLedger :: Map Address Account
+  { unLedger :: Map Address Balance
   } deriving (Eq, Show, Generic, Monoid)
 
 instance ToJSON Ledger where
-  toJSON = toJSON . map snd . unLedger
+  toJSON = toJSON . unLedger
 
 emptyLedger :: Ledger
 emptyLedger = Ledger mempty
 
-lookupAccount :: Address -> Ledger -> Maybe Account
-lookupAccount addr = Map.lookup addr . unLedger
+lookupBalance :: Address -> Ledger -> Maybe Balance
+lookupBalance addr = Map.lookup addr . unLedger
 
 -- | Add an integer to an account's existing balance
 addBalance :: Address -> Int -> Ledger -> Ledger
 addBalance addr amount =
-    Ledger . Map.adjust addBalance' addr . unLedger
-  where
-    addBalance' = second (+amount)
+  Ledger . Map.adjust (+amount) addr . unLedger
 
--- | Add an account with 0 balance to the Ledger
-addAccount :: Key.PublicKey -> Ledger -> Either AddAccountError Ledger
-addAccount pubKey ledger =
-    case lookupAccount newAddr ledger of
-      Nothing -> Right $ Ledger $ Map.insert newAddr newAcc ledger'
-      Just _  -> Left $ AccountExists newAddr
+-- | Add an address with 1000 balance to the Ledger
+addAddress :: Address -> Ledger -> Ledger
+addAddress addr ledger =
+    case lookupBalance addr ledger of
+      Nothing -> Ledger $ Map.insert addr 1000 ledger'
+      Just _  -> ledger
   where
     ledger' = unLedger ledger
-
-    newAddr = Address.deriveAddress pubKey
-
-    -- Automatically give every new account 1000 Nanocoins because yes
-    newAcc  = (pubKey, 1000)
 
 -- | Transfer Nanocoin from one account to another
 transfer
@@ -82,18 +64,24 @@ transfer
   -> Balance
   -> Either TransferError Ledger
 transfer ledger fromAddr toAddr amount = do
+
+  let ledger' = addAddress fromAddr (addAddress toAddr ledger)
+
   senderBal <-
-    case lookupAccount fromAddr ledger of
-      Nothing -> Left $ InvalidSender fromAddr
-      Just acc -> Right $ snd acc
+    case lookupBalance fromAddr ledger of
+      Nothing  -> Left $ AddressDoesNotExist fromAddr
+      Just bal -> Right bal
 
   recvrBal <-
-    case lookupAccount fromAddr ledger of
-      Nothing -> Left $ InvalidReceiver toAddr
-      Just acc -> Right $ snd acc
+    case lookupBalance toAddr ledger of
+      Nothing  -> Left $ AddressDoesNotExist toAddr
+      Just bal -> Right bal
 
-  if senderBal < amount
-    then Left $ InsufficientBalance fromAddr senderBal
-    else Right $
-      addBalance toAddr amount $
-        addBalance fromAddr (-amount) ledger
+  when (amount < 1) $
+    Left $ InvalidTransferAmount amount
+
+  when (senderBal < amount) $
+    Left $ InsufficientBalance fromAddr senderBal
+
+  Right $ addBalance toAddr amount
+    $ addBalance fromAddr (-amount) ledger'

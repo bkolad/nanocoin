@@ -95,6 +95,9 @@ both a command and query entry points. Simply type in
 
 - [ ] Moar Docs (explain the crypto math a bit better, serialization)
 - [ ] Add a test module
+- [ ] Add persistence of keys so address doesn't change every time a node is
+  booted.
+- [ ] Add data persistence, currently everything is in held in memory
 - [ ] Transition from multicast to distributed processing p2p network
   (`cloud-haskell`)
 - [ ] Include a *merkle tree root* of transaction hashes in the block header

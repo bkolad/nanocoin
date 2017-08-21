@@ -31,11 +31,18 @@ initNode rpcPort mKeysPath = do
     Just keysPath -> do
       eNodeKeys <- Key.readKeys keysPath
       case eNodeKeys of
-        Left err -> die err
+        Left err   -> die err
         Right keys -> pure keys
 
+  -- Read genesis key
+  genesisKey <- do
+    eKeys <- Key.readKeys "keys/genesis"
+    case eKeys of
+      Left err   -> die err
+      Right keys -> pure $ fst keys
+
   -- Initialize NodeState
-  nodeState <- Node.initNodeState peer keys
+  nodeState <- Node.initNodeState peer genesisKey keys
 
   -- Fork P2P server
   forkIO $ P2P.p2p nodeState

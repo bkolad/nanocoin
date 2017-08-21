@@ -56,6 +56,7 @@ handleMsg nodeState msg = do
       case mPrevBlock of
         Nothing -> putText "handleMessage: No Genesis block found."
         Just prevBlock -> do
+          -- Apply block to world state
           Node.applyBlock nodeState prevBlock block
           -- Ask if there is a more recent block
           nodeSender $ Msg.QueryBlockMsg (Block.index block + 1)

@@ -91,17 +91,6 @@ rpcServer nodeState = do
               -- This shouldn't happen
               json $ Map.fromList $ zip ([1..] :: [Int]) invalidTxErrs'
 
-    get "/createAccount" $ do
-      ledger <- getLedger nodeState
-      let addr = getNodeAddress nodeState
-      let keys = nodeKeys nodeState
-      case L.lookupAccount addr ledger of
-        Nothing -> do
-          tx <- liftIO $ T.addAccountTx keys
-          liftIO . p2pSender $ Msg.TransactionMsg tx
-          json tx
-        Just _  -> json ("Account already exists" :: Text)
-
     get "/transfer/:toAddr/:amount" $ do
       toAddr' <- param "toAddr"
       amount <- param "amount"
@@ -109,7 +98,7 @@ rpcServer nodeState = do
         Left err -> text $ toSL err
         Right toAddr -> do
           let keys = nodeKeys nodeState
-          tx <- liftIO $ T.transferTx keys toAddr amount
+          tx <- liftIO $ T.transferTransaction keys toAddr amount
           liftIO . p2pSender $ Msg.TransactionMsg tx
           json tx
 
