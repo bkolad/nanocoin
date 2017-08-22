@@ -67,29 +67,39 @@ rpcServer nodeState = do
         Nothing -> text "Cannot mine block without a genesis block"
         Just prevBlock -> do
 
-          -- Validate transactions in mempool, discarding the invalid
+          putText "[0] Mining Block..."
+
+          -- Validate transactions in mempool
           ledger <- getLedger nodeState
           txs <- MP.unMemPool <$> getMemPool nodeState
           let (ledger', invalidTxErrs) = T.applyTransactions ledger txs
           let invalidTxs = map (\(T.InvalidTx tx _) -> tx) invalidTxErrs
+
+          -- Discard invalid transactions
+          putText "[1] Discarding Invalid Transactions..."
+          mapM_ (putText . show) invalidTxErrs
           modifyMemPool_ nodeState $ MP.removeTransactions invalidTxs
           let validTxs = txs \\ invalidTxs
 
           -- Attempt to mine block with the valid transactions
+          putText "[2] Constructing new block..."
           let privKey = snd $ nodeKeys nodeState
-          block <- B.mineBlock prevBlock privKey validTxs
-          case B.validateAndApplyBlock ledger prevBlock block of
-            Left err -> text $ show err
-            Right (_, []) -> do
-              putText $ "Generated block with hash:\n\t"
-                <> decodeUtf8 (B.hashBlock block)
-              -- Broadcast block message to network
-              liftIO $ p2pSender $ Msg.BlockMsg block
-              -- Display the new block
-              json block
-            Right (_, invalidTxErrs') ->
-              -- This shouldn't happen
-              json $ Map.fromList $ zip ([1..] :: [Int]) invalidTxErrs'
+
+          unless (null validTxs) $ do
+            block <- B.mineBlock prevBlock privKey validTxs
+            case B.validateAndApplyBlock ledger prevBlock block of
+              Left err -> text $ show err
+              Right (_, []) -> do
+                putText $ "Generated block with hash:\n\t"
+                  <> decodeUtf8 (B.hashBlock block)
+                -- Broadcast block message to network
+                liftIO $ p2pSender $ Msg.BlockMsg block
+                -- Display the new block
+                json block
+              Right (_, invalidTxErrs') -> do
+                -- This shouldn't happen
+                putText ("Could not mine block, Invalid Transactions:" :: Text)
+                json $ Map.fromList $ zip ([1..] :: [Int]) invalidTxErrs'
 
     get "/transfer/:toAddr/:amount" $ do
       toAddr' <- param "toAddr"

@@ -68,12 +68,12 @@ transfer ledger fromAddr toAddr amount = do
   let ledger' = addAddress fromAddr (addAddress toAddr ledger)
 
   senderBal <-
-    case lookupBalance fromAddr ledger of
+    case lookupBalance fromAddr ledger' of
       Nothing  -> Left $ AddressDoesNotExist fromAddr
       Just bal -> Right bal
 
   recvrBal <-
-    case lookupBalance toAddr ledger of
+    case lookupBalance toAddr ledger' of
       Nothing  -> Left $ AddressDoesNotExist toAddr
       Just bal -> Right bal
 

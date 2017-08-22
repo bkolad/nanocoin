@@ -30,7 +30,7 @@ p2p nodeState = do -- TODO: Take buffer size as argument, max size of blockchain
   let (sender,receiver) = Node.nodeSender &&& Node.nodeReceiver $ nodeState
   void $ forkIO $ forever $ receiver >>= -- | Forever handle messages
     -- XXX forkIO here again?
-    either (logThread "p2p") (handleMsg nodeState . fst)
+    either putText (handleMsg nodeState . fst)
 
 ----------------------------------------------------------------
 -- Msg Handling
@@ -39,15 +39,16 @@ p2p nodeState = do -- TODO: Take buffer size as argument, max size of blockchain
 -- | Main dispatch function to handle all messages received from network
 handleMsg :: Node.NodeState -> Msg.Msg -> IO ()
 handleMsg nodeState msg = do
-  prefix <- mkThreadDebugPrefix "handleMsg"
-  logThread prefix $ "Received Msg: " <> (show msg :: Text)
+
+  putText $ "Received Msg: " <> (show msg :: Text)
   let nodeSender = Node.nodeSender nodeState
+
   case msg of
 
     Msg.QueryBlockMsg n -> do
       chain <- Node.getBlockChain nodeState
       case find ((==) n . Block.index) chain of
-        Nothing    -> logThread prefix $
+        Nothing    -> putText $
           "No block with index " <> show n
         Just block -> nodeSender $ Msg.BlockMsg block
 
@@ -69,22 +70,3 @@ handleMsg nodeState msg = do
         Right _  -> -- Add transaction to mempool
           Node.modifyMemPool_ nodeState $
             MemPool.addTransaction tx
-
-----------------------------------------------------------------
--- DEBUG
-----------------------------------------------------------------
-
-mkThreadDebugPrefix :: Text -> IO Text
-mkThreadDebugPrefix funcName = do
-  threadIdStr <- show <$> myThreadId
-  return $ threadIdStr <> " - " <> funcName <> ": "
-
--- | Set `debug` to `True` to enable logging
-logThread :: Text -> Text -> IO ()
-logThread funcName msg
-  | debug = do
-      logMsg <- (<> msg) <$> mkThreadDebugPrefix funcName
-      print logMsg
-  | otherwise = return ()
-  where
-    debug = False
