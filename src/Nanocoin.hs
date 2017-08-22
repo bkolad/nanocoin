@@ -11,6 +11,7 @@ import Protolude hiding (get, put)
 import Web.Scotty
 
 import qualified Key
+import qualified Nanocoin.Block as B
 import qualified Nanocoin.Ledger as L
 import qualified Nanocoin.Transaction as T
 import qualified Nanocoin.Network.Message as Msg
@@ -34,15 +35,15 @@ initNode rpcPort mKeysPath = do
         Left err   -> die err
         Right keys -> pure keys
 
-  -- Read genesis key
-  genesisKey <- do
+  -- Initialize Genesis Block
+  genesisBlock <- do
     eKeys <- Key.readKeys "keys/genesis"
     case eKeys of
       Left err   -> die err
-      Right keys -> pure $ fst keys
+      Right gkeys -> B.genesisBlock gkeys
 
   -- Initialize NodeState
-  nodeState <- Node.initNodeState peer genesisKey keys
+  nodeState <- Node.initNodeState peer genesisBlock keys
 
   -- Fork P2P server
   forkIO $ P2P.p2p nodeState

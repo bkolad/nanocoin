@@ -72,12 +72,15 @@ data Block = Block
   , signature    :: ByteString    -- ^ Block signature
   } deriving (Eq, Show, Generic, S.Serialize)
 
-genesisBlock :: Key.PublicKey -> Block
-genesisBlock pubKey = Block
-  { index     = 0
-  , header    = genesisBlockHeader
-  , signature = ""
-  }
+genesisBlock :: Key.KeyPair -> IO Block
+genesisBlock (pubKey, privKey) = do
+    signature' <- liftIO $
+      Key.sign privKey (S.encode genesisBlockHeader)
+    return Block
+      { index     = 0
+      , header    = genesisBlockHeader
+      , signature = S.encode signature'
+      }
   where
     genesisBlockHeader = BlockHeader
       { origin       = pubKey

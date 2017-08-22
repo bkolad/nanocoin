@@ -52,12 +52,12 @@ data NodeState = NodeState
 
 initNodeState
   :: Peer.Peer
-  -> Key.PublicKey
+  -> Block.Block
   -> Key.KeyPair
   -> IO NodeState
-initNodeState self genesisKey keys = do
+initNodeState self genesisBlock keys = do
   let (Peer.Peer hn p2pPort _) = self
-  chainMV  <- newMVar [Block.genesisBlock genesisKey]
+  chainMV  <- newMVar [genesisBlock]
   (receiver, sender) <- M.initMulticast hn p2pPort 65536
   ledgerMV <- newMVar mempty
   memPoolMV <- newMVar mempty
