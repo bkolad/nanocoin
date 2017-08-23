@@ -39,6 +39,8 @@ instance ToJSON Ledger where
 emptyLedger :: Ledger
 emptyLedger = Ledger mempty
 
+-- Lookup the balance of an Address. This operation returns
+-- Nothing if the address has never transacted on the network.
 lookupBalance :: Address -> Ledger -> Maybe Balance
 lookupBalance addr = Map.lookup addr . unLedger
 
@@ -58,14 +60,14 @@ addAddress addr ledger =
 
 -- | Transfer Nanocoin from one account to another
 transfer
-  :: Ledger
-  -> Address
+  :: Address
   -> Address
   -> Balance
+  -> Ledger
   -> Either TransferError Ledger
-transfer ledger fromAddr toAddr amount = do
+transfer fromAddr toAddr amount ledger = do
 
-  let ledger' = addAddress fromAddr (addAddress toAddr ledger)
+  let ledger' = foldr addAddress ledger [toAddr, fromAddr]
 
   senderBal <-
     case lookupBalance fromAddr ledger' of

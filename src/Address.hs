@@ -57,8 +57,8 @@ deriveAddress :: Key.PublicKey -> Address
 deriveAddress pub = Address (b58 addr)
   where
     (x, y) = Key.extractPoint pub
-    addr   = BA.convert $ deriveHash pstr
-    pstr   = (i2osp x) <> ";" <> (i2osp y)
+    addr   = BA.convert $ deriveHash bytes
+    bytes  = i2osp x <> i2osp y
 
 -- | Address derivation function, maps a hash of a EC point to a unique,
 -- irreversible identity that uniquely defines a participant in the network and
@@ -68,7 +68,7 @@ deriveAddress pub = Address (b58 addr)
 deriveHash :: ByteString -> ByteString
 deriveHash = Hash.sha256Raw'
            . Hash.sha256Raw'
-           . Hash.ripemd160Raw
+           . Hash.ripemd160Raw'
            . Hash.sha256Raw'
 
 -- | Validate whether an address is a well-formed B58 encoded hash.

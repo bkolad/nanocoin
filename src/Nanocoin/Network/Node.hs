@@ -19,6 +19,7 @@ module Nanocoin.Network.Node (
 
   getMemPool,
   modifyMemPool_,
+  purgeMemPool,
 
 ) where
 
@@ -32,6 +33,7 @@ import Address (Address)
 
 import qualified Address
 import qualified Nanocoin.Block as Block
+import qualified Nanocoin.Transaction as Tx
 import qualified Nanocoin.Ledger as Ledger
 import qualified Nanocoin.MemPool as MemPool
 import qualified Nanocoin.Network.Message as Msg
@@ -109,8 +111,10 @@ applyBlock nodeState prevBlock  block = do
           putText "applyBlock: Block is valid. Applying block..."
           -- If no invalid transactions, add block to chain
           modifyBlockChain_ nodeState (block:)
-          -- Remove transactions from memPool
-          let blockTxs = Block.transactions $ Block.header block
+          -- Remove stale, invalid transactions
+          purgeMemPool nodeState
+          -- Remove transactions in block from memPool
+          let blockTxs = Block.transactions block
           modifyMemPool_ nodeState $ MemPool.removeTransactions blockTxs
           -- Update ledger to new ledger state
           setLedger nodeState ledger'
@@ -130,6 +134,19 @@ modifyMemPool_
   -> m ()
 modifyMemPool_ nodeState f =
   modifyNodeState_ nodeState nodeMemPool (pure . f)
+
+-- | Removes stale transactions, returning them
+purgeMemPool
+  :: MonadIO m
+  => NodeState
+  -> m [Tx.InvalidTx]
+purgeMemPool nodeState = do
+  ledger <- getLedger nodeState
+  txs <- MemPool.unMemPool <$> getMemPool nodeState
+  let (ledger', invalidTxErrs) = Tx.applyTransactions ledger txs
+  let invalidTxs = map (\(Tx.InvalidTx tx _) -> tx) invalidTxErrs
+  modifyMemPool_ nodeState $ MemPool.removeTransactions invalidTxs
+  return invalidTxErrs
 
 resetMemPool
   :: MonadIO m

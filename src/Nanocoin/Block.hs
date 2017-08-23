@@ -46,6 +46,8 @@ import qualified Data.Serialize as S
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
+import Crypto.Hash.MerkleTree
+
 import Address
 import Nanocoin.Ledger
 import Nanocoin.Transaction (Transaction)
@@ -62,13 +64,14 @@ type Blockchain = [Block]
 data BlockHeader = BlockHeader
   { origin       :: Key.PublicKey -- ^ Address of Block miner
   , previousHash :: ByteString    -- ^ Previous block hash
-  , transactions :: [Transaction] -- ^ List of Transactions
+  , merkleRoot   :: ByteString    -- ^ Merkle Root of transactions
   , nonce        :: Int64         -- ^ Nonce for Proof-of-Work
   } deriving (Eq, Show)
 
 data Block = Block
   { index        :: Index         -- ^ Block height
   , header       :: BlockHeader   -- ^ Block header
+  , transactions :: [Transaction] -- ^ List of Transactions
   , signature    :: ByteString    -- ^ Block signature
   } deriving (Eq, Show, Generic, S.Serialize)
 
@@ -79,13 +82,14 @@ genesisBlock (pubKey, privKey) = do
     return Block
       { index     = 0
       , header    = genesisBlockHeader
+      , transactions = []
       , signature = S.encode signature'
       }
   where
     genesisBlockHeader = BlockHeader
       { origin       = pubKey
       , previousHash = "0"
-      , transactions = []
+      , merkleRoot   = getMerkleRoot emptyHash
       , nonce        = 0
       }
 
@@ -103,7 +107,7 @@ hashBlockHeader BlockHeader{..} =
   Hash.getHash $ Hash.sha256 $
     BS.concat [ rawAddress (deriveAddress origin)
               , previousHash
-              , S.encode transactions
+              , merkleRoot
               , B8.pack (show nonce)
               ]
 
@@ -119,6 +123,7 @@ data InvalidBlock
   = InvalidBlockSignature Text
   | InvalidBlockIndex Int
   | InvalidBlockHash
+  | InvalidBlockMerkleRoot Text
   | InvalidBlockNumTxs
   | InvalidBlockTx T.InvalidTx
   | InvalidPrevBlockHash
@@ -149,14 +154,19 @@ validateBlock ledger prevBlock block
   | index block /= index prevBlock + 1 = Left $ InvalidBlockIndex (index block)
   | hashBlock prevBlock /= previousHash (header block) = Left InvalidPrevBlockHash
   | not (checkProofOfWork block) = Left InvalidBlockHash
-  | null (transactions $ header block) = Left InvalidBlockNumTxs
+  | null (transactions block) = Left InvalidBlockNumTxs
+  | mRoot /= mRoot' = Left $ InvalidBlockMerkleRoot $ toS mRoot'
   | otherwise = do
       -- Verify signature of block
       verifyBlockSignature block
       -- Validate all transactions w/ respect to world state
-      first InvalidBlockTx $ do
-        let txs = transactions $ header block
-        T.validateTransactions ledger txs
+      first InvalidBlockTx $
+        T.validateTransactions ledger blockTxs
+  where
+    blockTxs = transactions block
+    txHashes = map T.hashTransaction blockTxs
+    mRoot  = merkleRoot $ header block      -- given root
+    mRoot' = mtHash $ mkMerkleTree txHashes -- constr root
 
 validateAndApplyBlock
   :: Ledger
@@ -172,7 +182,7 @@ applyBlock
   :: Ledger
   -> Block
   -> (Ledger, [T.InvalidTx])
-applyBlock ledger = T.applyTransactions ledger . transactions . header
+applyBlock ledger = T.applyTransactions ledger . transactions
 
 -------------------------------------------------------------------------------
 -- Consensus
@@ -189,15 +199,18 @@ mineBlock prevBlock privKey txs = do
     signature' <- liftIO $ -- Sign the serialized block header
       Key.sign privKey (S.encode blockHeader)
     return Block
-      { index     = index'
-      , header    = blockHeader
-      , signature = S.encode signature'
+      { index        = index'
+      , header       = blockHeader
+      , transactions = txs
+      , signature    = S.encode signature'
       }
   where
+    txHashes = map T.hashTransaction txs
+
     initBlockHeader = BlockHeader
       { origin       = origin'
       , previousHash = prevHash
-      , transactions = txs
+      , merkleRoot   = mtHash (mkMerkleTree txHashes)
       , nonce        = 0
       }
 
@@ -241,10 +254,10 @@ checkProofOfWork block =
 -------------------------------------------------------------------------------
 
 instance S.Serialize BlockHeader where
-  put (BlockHeader opk ph txs n) = do
+  put (BlockHeader opk ph mr n) = do
     Key.putPublicKey opk
     S.put ph
-    S.put txs
+    S.put mr
     S.put n
   get = BlockHeader
     <$> Key.getPublicKey
@@ -253,20 +266,21 @@ instance S.Serialize BlockHeader where
     <*> S.get
 
 instance ToJSON BlockHeader where
-  toJSON (BlockHeader opk ph txs n) =
+  toJSON (BlockHeader opk ph mr n) =
     let (x,y) = Key.extractPoint opk in
     object [ "origin"       .= object
                [ "x" .= (x :: Integer)
                , "y" .= (y :: Integer)
                ]
-           , "previousHash" .= decodeUtf8 ph
-           , "transactions" .= toJSON txs
+           , "previousHash" .= Hash.encode64 ph
+           , "merkleRoot"   .= Hash.encode64 mr
            , "nonce"        .= toJSON n
            ]
 
 instance ToJSON Block where
-  toJSON (Block i bh s) =
-    object [ "index"  .= i
-           , "header"    .= toJSON bh
-           , "signature" .= Hash.encode64 s
+  toJSON (Block i bh txs s) =
+    object [ "index"        .= i
+           , "header"       .= toJSON bh
+           , "transactions" .= toJSON txs
+           , "signature"    .= Hash.encode64 s
            ]

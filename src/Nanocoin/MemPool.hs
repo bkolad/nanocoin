@@ -24,10 +24,12 @@ addTransaction
   :: Transaction
   -> MemPool
   -> MemPool
-addTransaction tx (MemPool pool) = MemPool (pool ++ [tx])
+addTransaction tx (MemPool pool) =
+  MemPool (pool ++ [tx])
 
 removeTransactions
   :: [Transaction]
   -> MemPool
   -> MemPool
-removeTransactions txs (MemPool pool) = MemPool $ pool \\ txs
+removeTransactions txs (MemPool pool) =
+  MemPool $ pool \\ txs

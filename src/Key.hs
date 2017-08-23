@@ -23,19 +23,19 @@ module Key (
   -- ** Serialization
   hexPub,
   dehexPub,
-  
+
   putPublicKey,
   getPublicKey,
   putInteger,
   getInteger,
-  
+
 ) where
 
 import Protolude
 
-import qualified Crypto.Number.Basic as CNB 
-import qualified Crypto.Number.Serialize as CNS 
-import qualified Crypto.PubKey.ECC.ECDSA as ECDSA 
+import qualified Crypto.Number.Basic as CNB
+import qualified Crypto.Number.Serialize as CNS
+import qualified Crypto.PubKey.ECC.ECDSA as ECDSA
 import qualified Crypto.PubKey.ECC.Generate as ECC
 import qualified Crypto.PubKey.ECC.Prim as ECC
 import qualified Crypto.PubKey.ECC.Types as ECC
@@ -66,7 +66,7 @@ newKeyPair = ECC.generate sec_p256k1
 -- | Create a public key from a secret key
 --
 -- WARNING: Vulnerable to timing attacks.
-toPublic :: ECDSA.PrivateKey -> ECDSA.PublicKey 
+toPublic :: ECDSA.PrivateKey -> ECDSA.PublicKey
 toPublic key = ECDSA.PublicKey curve point
   where
     curve  = ECDSA.private_curve key
@@ -81,13 +81,13 @@ mkPublicKey (x,y) = ECDSA.PublicKey sec_p256k1 $ ECC.Point x y
 extractPoint :: ECDSA.PublicKey -> (Integer, Integer)
 extractPoint pubkey = (x,y)
   where
-    ECC.Point x y = ECDSA.public_q pubkey 
+    ECC.Point x y = ECDSA.public_q pubkey
 
 -- | SHA3_256 hashes a msg before signing
 sign :: ECDSA.PrivateKey -> ByteString -> IO ECDSA.Signature
-sign pk = ECDSA.sign pk Hash.SHA3_256 
+sign pk = ECDSA.sign pk Hash.SHA3_256
 
--- | Verify a signature of a SHA3_256 encoded ByteString 
+-- | Verify a signature of a SHA3_256 encoded ByteString
 verify :: ECDSA.PublicKey -> ECDSA.Signature -> ByteString -> Bool
 verify = ECDSA.verify Hash.SHA3_256
 
@@ -97,19 +97,19 @@ verify = ECDSA.verify Hash.SHA3_256
 
 -- | Hex encoding of public key
 -- XXX Explain encoding
-hexPub :: ECDSA.PublicKey -> ByteString 
-hexPub pubKey = Hash.base16 
+hexPub :: ECDSA.PublicKey -> ByteString
+hexPub pubKey = Hash.base16
     (CNS.i2ospOf_ 32 x <> CNS.i2ospOf_ 32 y :: ByteString)
   where
       (x, y) = extractPoint pubKey
 
 -- | Dehex public key
-dehexPub :: ByteString -> Either Text ECDSA.PublicKey 
+dehexPub :: ByteString -> Either Text ECDSA.PublicKey
 dehexPub bs = do
   bs' <- first toS $ BAE.convertFromBase BAE.Base16 bs
   let (xs, ys) = BS.splitAt 32 bs'
   let point = ECC.Point (CNS.os2ip xs) (CNS.os2ip ys)
-  if ECC.isPointValid sec_p256k1 point 
+  if ECC.isPointValid sec_p256k1 point
     then Right $ ECDSA.PublicKey sec_p256k1 point
     else Left "dehexPub: Invalid public key point"
 
@@ -120,12 +120,13 @@ instance S.Serialize ECDSA.Signature
 ----------------------------------------------------------------
 
 putPublicKey :: S.Putter ECDSA.PublicKey
-putPublicKey pubKey = do 
+putPublicKey pubKey = do
   let (x,y) = Key.extractPoint pubKey
   Key.putInteger x
   Key.putInteger y
 
 -- | UNSAFE: Does not check the validity of the point
+getPublicKey :: S.Get ECDSA.PublicKey
 getPublicKey = do
   x <- Key.getInteger
   y <- Key.getInteger
@@ -135,70 +136,70 @@ encodePublicKey :: ECDSA.PublicKey -> ByteString
 encodePublicKey = S.runPut . putPublicKey
 
 decodePublicKey :: ByteString -> Either [Char] ECDSA.PublicKey
-decodePublicKey = S.runGet getPublicKey  
+decodePublicKey = S.runGet getPublicKey
 
 ----------------------------------------------------------------
 
 putPrivateKey :: S.Putter ECDSA.PrivateKey
-putPrivateKey = putInteger . ECDSA.private_d 
+putPrivateKey = putInteger . ECDSA.private_d
 
-getPrivateKey :: S.Get ECDSA.PrivateKey 
+getPrivateKey :: S.Get ECDSA.PrivateKey
 getPrivateKey = ECDSA.PrivateKey sec_p256k1 <$> getInteger
 
 encodePrivateKey :: ECDSA.PrivateKey -> ByteString
 encodePrivateKey = S.runPut . putPrivateKey
 
 decodePrivateKey :: ByteString -> Either [Char] ECDSA.PrivateKey
-decodePrivateKey = S.runGet getPrivateKey  
+decodePrivateKey = S.runGet getPrivateKey
 
 ----------------------------------------------------------------
 
 encodeKeyPair :: KeyPair -> ByteString
-encodeKeyPair (pubKey, privKey) = 
+encodeKeyPair (pubKey, privKey) =
   S.runPut $ do
     putPublicKey pubKey
     putInteger 42
     putPrivateKey privKey
-  
+
 decodeKeyPair :: ByteString -> Either [Char] KeyPair
-decodeKeyPair bs = 
+decodeKeyPair bs =
   flip S.runGet bs $ do
     pubKey <- getPublicKey
-    getInteger 
+    getInteger
     privKey <- getPrivateKey
     pure $ (pubKey,privKey)
 
 ----------------------------------------------------------------
 
 -- | Serialize an Integer
-putInteger :: S.Putter Integer 
+putInteger :: S.Putter Integer
 putInteger n = do
   let nBytes = CNB.numBytes n
   S.putInt64le $ fromIntegral nBytes
-  S.putByteString $ CNS.i2ospOf_ nBytes n 
+  S.putByteString $ CNS.i2ospOf_ nBytes n
 
 -- | Deserialize an Integer
 -- UNSAFE: vulnerable to long Integer injection attacks
 getInteger :: S.Get Integer
 getInteger = do
-  nBytes <- fromIntegral <$> S.getInt64le 
-  CNS.os2ip <$> S.getByteString nBytes 
+  nBytes <- fromIntegral <$> S.getInt64le
+  CNS.os2ip <$> S.getByteString nBytes
 
 encodeInteger :: Integer -> ByteString
 encodeInteger = S.runPut . putInteger
 
 ----------------------------------------------------------------
--- Node Keys 
+-- Node Keys
 ----------------------------------------------------------------
 
 writeKeys (Just path) keys = do
-  mkKeysDir $ takeDirectory path 
+  mkKeysDir $ takeDirectory path
   BS.writeFile path $ encodeKeyPair keys
 
 readKeys :: FilePath -> IO (Either [Char] KeyPair)
 readKeys fp = do
   fileExists <- doesFileExist fp
-  if fileExists 
+  if fileExists
     then do
       keysBS <- BS.readFile fp
       case decodeKeyPair keysBS of
@@ -208,4 +209,4 @@ readKeys fp = do
       Left "Supplied keys directory invalid"
 
 mkKeysDir :: FilePath -> IO ()
-mkKeysDir = createDirectoryIfMissing False 
+mkKeysDir = createDirectoryIfMissing False

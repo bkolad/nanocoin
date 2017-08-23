@@ -32,14 +32,14 @@ initNode rpcPort mKeysPath = do
     Just keysPath -> do
       eNodeKeys <- Key.readKeys keysPath
       case eNodeKeys of
-        Left err   -> die err
+        Left err   -> die $ show err
         Right keys -> pure keys
 
   -- Initialize Genesis Block
   genesisBlock <- do
     eKeys <- Key.readKeys "keys/genesis"
     case eKeys of
-      Left err   -> die err
+      Left err   -> die $ show err
       Right gkeys -> B.genesisBlock gkeys
 
   -- Initialize NodeState

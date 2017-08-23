@@ -1,6 +1,6 @@
 module Main where
 
-import Protolude
+import Protolude hiding (option)
 
 import Data.Maybe (fromMaybe)
 

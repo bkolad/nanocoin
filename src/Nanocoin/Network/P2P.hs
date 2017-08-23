@@ -59,8 +59,11 @@ handleMsg nodeState msg = do
         Just prevBlock -> do
           -- Apply block to world state
           Node.applyBlock nodeState prevBlock block
-          -- Ask if there is a more recent block
-          nodeSender $ Msg.QueryBlockMsg (Block.index block + 1)
+          -- If the block was successfully applied
+          newPrevBlock <- Node.getLatestBlock nodeState
+          when (Just block == newPrevBlock) $
+            -- Ask if there is a more recent block
+            nodeSender $ Msg.QueryBlockMsg (Block.index block + 1)
 
     Msg.TransactionMsg tx -> do
       ledger <- Node.getLedger nodeState

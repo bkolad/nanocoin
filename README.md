@@ -324,13 +324,13 @@ deriveAddress pub = Address (b58 addr)
   where
     (x, y) = Key.extractPoint pub
     addr   = BA.convert $ deriveHash pstr
-    pstr   = (i2osp x) <> ";" <> (i2osp y)
+    pstr   = i2osp x <> i2osp y
 
 -- | addrHash(n) = sha256(sha256(ripemd160(sha256(n))))
 deriveHash :: ByteString -> ByteString
 deriveHash = Hash.sha256Raw'
            . Hash.sha256Raw'
-           . Hash.ripemd160Raw
+           . Hash.ripemd160Raw'
            . Hash.sha256Raw'
 ```
 

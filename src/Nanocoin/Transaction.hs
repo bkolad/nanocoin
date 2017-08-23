@@ -5,6 +5,8 @@ module Nanocoin.Transaction (
   Transaction(..),
   TransactionHeader(..),
 
+  hashTransaction,
+
   -- ** Construction
   transferTransaction,
 
@@ -13,8 +15,10 @@ module Nanocoin.Transaction (
   InvalidTxField(..),
   verifyTxSignature,
   validateTransactions,
+
   applyTransaction,
   applyTransactions,
+
   invalidTxs,
 
 ) where
@@ -35,8 +39,6 @@ import qualified Hash
 import qualified Key
 import qualified Nanocoin.Ledger as Ledger
 
-type Timestamp = Integer
-
 data TransactionHeader = Transfer
   { senderKey :: Key.PublicKey
   , recipient :: Address
@@ -49,7 +51,7 @@ data Transaction = Transaction
   } deriving (Eq, Show, Generic, S.Serialize)
 
 hashTransaction :: Transaction -> ByteString
-hashTransaction = Hash.getHash . Hash.sha256 . hashTxHeader . header
+hashTransaction = hashTxHeader . header
 
 hashTxHeader :: TransactionHeader -> ByteString
 hashTxHeader = Hash.getHash . Hash.sha256 . S.encode
@@ -63,7 +65,7 @@ transaction
   -> TransactionHeader
   -> IO Transaction
 transaction privKey txHdr = do
-  txSig <- Key.sign privKey $ hashTxHeader txHdr
+  txSig <- Key.sign privKey $ S.encode txHdr
   pure $ Transaction txHdr $ S.encode txSig
 
 transferTransaction
@@ -91,16 +93,14 @@ verifyTxSignature
   -> Transaction
   -> Either InvalidTx ()
 verifyTxSignature l tx = do
-  let txHeader = header tx
+  let txHdr  = header tx
+  let pubKey = senderKey txHdr
   case S.decode (signature tx) of
-    Left err -> Left $ mkInvalidTx $ InvalidTxSignature (toS err)
+    Left err -> Left $ InvalidTx tx $ InvalidTxSignature (toS err)
     Right sig -> do
-      let txHash = hashTxHeader txHeader
-      let validSig = Key.verify (senderKey txHeader) sig txHash
-      unless validSig $ Left $ mkInvalidTx $
+      let validSig = Key.verify pubKey sig (S.encode txHdr)
+      unless validSig $ Left $ InvalidTx tx $
         InvalidTxSignature "Failed to verify transaction signature"
-  where
-    mkInvalidTx = InvalidTx tx
 
 -- | Validate all transactions with respect to world state
 validateTransactions :: Ledger -> [Transaction] -> Either InvalidTx ()
@@ -141,7 +141,7 @@ applyTransaction ledger tx@(Transaction hdr sig) = do
 
   -- Apply transaction to world state
   let from = deriveAddress pk
-  case Ledger.transfer ledger from to amnt of
+  case Ledger.transfer from to amnt ledger of
     Left err -> do
       throwError $ InvalidTx tx $ InvalidTransfer err
       pure ledger

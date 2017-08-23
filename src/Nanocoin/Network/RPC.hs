@@ -69,21 +69,17 @@ rpcServer nodeState = do
 
           putText "[0] Mining Block..."
 
-          -- Validate transactions in mempool
-          ledger <- getLedger nodeState
-          txs <- MP.unMemPool <$> getMemPool nodeState
-          let (ledger', invalidTxErrs) = T.applyTransactions ledger txs
-          let invalidTxs = map (\(T.InvalidTx tx _) -> tx) invalidTxErrs
-
-          -- Discard invalid transactions
+          -- Validate and discard invalid transactions
           putText "[1] Discarding Invalid Transactions..."
+          invalidTxErrs <- purgeMemPool nodeState
           mapM_ (putText . show) invalidTxErrs
-          modifyMemPool_ nodeState $ MP.removeTransactions invalidTxs
-          let validTxs = txs \\ invalidTxs
+          validTxs <- MP.unMemPool <$> getMemPool nodeState
 
           -- Attempt to mine block with the valid transactions
           putText "[2] Constructing new block..."
+
           let privKey = snd $ nodeKeys nodeState
+          ledger <- getLedger nodeState
 
           unless (null validTxs) $ do
             block <- B.mineBlock prevBlock privKey validTxs
