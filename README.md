@@ -13,14 +13,10 @@ necessary to implement a cryptocurrency.
 * Low-dependencies.
 * Using classic proof-of-work.
 * Simple P2P Protocol using UDP chatter.
-* Supports chain reconfiguration.
+* Support chain reconfiguration.
 * Basic ECDSA Block/Transaction signatures & validation
 * Transfer Transactions
 * In-memory.
-
-This document serves as a brief overview of blockchain components and how to
-implement a cryptocurrency from scratch. Basic blockchain knowledge is assumed, but
-brief overviews of the basic components are included.
 
 Running a Node 
 ---------------
@@ -41,6 +37,29 @@ a node's public/private ECC key pair. If you do not supply a `KEYS_DIR`, the nod
 generate a random key pair with which to issue transactions and mine block.
 
 `Usage: nanocoin [-p|--rpc-port RPC_PORT] [-k|--keys KEYS_DIR]`
+
+Enabling Multicast
+------------------
+
+Nanocoin uses a UDP multicast gossip protocol for P2P networking. Before
+running the program, make sure your localhost network interface has multicast
+enabled. The simplest way to do this on Unix-like systems is:
+
+```bash
+$ sudo ifconfig lo multicast
+```
+
+Otherwise, the program with fail with `addMembership: failed (Unknown error -1)`
+error from the `Multicast` module when attempting to add the node to the
+multicast group. 
+
+Usually, `lo` is the name of the local loopback (localhost) network interface on
+modern Linux machines, but could differ depending on your machine and/or OS. To
+check what your localhost network interface is, type `ifconfig`; The interface
+prefixed by `lo`, e.g. `lo0` is usually the interface of interest. Simply
+replace `lo` with the name of your localhost network interface in the command
+above.
+
 
 ### RPC Interface
 
@@ -92,11 +111,19 @@ both a command and query entry points. Simply type in
 - [ ] Add data persistence, currently everything is in held in memory
 - [ ] Transition from multicast to distributed processing p2p network
   (`cloud-haskell`)
-- [ ] Include a *merkle tree root* of transaction hashes in the block header
+- [x] Include a *merkle tree root* of transaction hashes in the block header
   instead of a full list of transactions
+- [ ] Query transaction inclusion using merkle proofs
 - [ ] Develop a more sophisticated asynchronous messaging protocol after
   transitioning to `cloud-haskell`
 - [ ] Add a CLI for friendlier interaction with a nanocoin node than a web browser
+
+Overview of Basic Cryptocurrency Components
+-------------------------------------------
+
+This document serves as a brief overview of blockchain components and how to
+implement a cryptocurrency from scratch. Basic blockchain knowledge is assumed, but
+brief overviews of the basic components are included.
 
 Cryptography
 ------------
@@ -164,6 +191,8 @@ A Finite Field `GF(p)` can be described as a cyclic group with a prime order, or
 | 0 | 0 | 0 | 0 |
 | 1 | 0 | 1 | 2 | 
 | 2 | 0 | 2 | 1 |
+
+TODO: elaborate...
 
 Visit [this link](https://eng.paxos.com/blockchain-101-foundational-math) for a more 
 in depth dive into Finite Fields mathematics.
@@ -426,19 +455,21 @@ type Blockchain = [Block]
 data BlockHeader = BlockHeader
   { origin       :: Key.PublicKey -- ^ Public Key of Block miner
   , previousHash :: ByteString    -- ^ Previous block hash
-  , transactions :: [Transaction] -- ^ List of Transactions
+  , merkleRoot   :: ByteString    -- ^ Merkle root of tranactions
   , nonce        :: Int           -- ^ Nonce for Proof-of-Work
   } deriving (Eq, Show, Generic, S.Serialize)
 
 data Block = Block
   { index        :: Index         -- ^ Block height
   , header       :: BlockHeader   -- ^ Block header
+  , transactions :: [Transaction] -- ^ List of Transactions
   , signature    :: ByteString    -- ^ Block ECDSA signature
   }
 ```
 
 Previous block hashes, contained in the `previousHash` field, are used to identify previous blocks in the chain
-because of the way in which a change in even one bit of the data of the previous block will result in an incredibly different hash output. This creates a tamper resistant history due to the fact that before a node will accept a new 
+because of the way in which a change in even one bit of the data of the previous block will result in an incredibly 
+different hash output. This creates a tamper resistant history due to the fact that before a node will accept a new 
 block, it checks to see if hashing the previous block in it's local storage results in the same hash of the new 
 block it has received. 
 
@@ -563,11 +594,7 @@ Nanocoin defines a Mempool as a newtype wrapper around a list.
 newtype MemPool = MemPool
   { unMemPool :: [Transaction]
   } deriving (Show, Eq, Generic, Monoid, ToJSON)
-```
 
-and supports 2 operations over the mempool:
-
-```haskell
 addTransaction :: Transaction -> MemPool -> MemPool
 addTransaction tx (MemPool pool) = MemPool (pool ++ [tx])
 
@@ -666,28 +693,6 @@ checkProofOfWork block =
 
 This is perhaps the one of the most notable outcomes of simple Proof of Work; Generating a new 
 valid block is computationally difficult, but validating the generated block is computationally trivial.
-
-Enabling Multicast
-------------------
-
-Nanocoin uses a UDP multicast gossip protocol for P2P networking. Before
-running the program, make sure your localhost network interface has multicast
-enabled. The simplest way to do this on Unix-like systems is:
-
-```bash
-$ sudo ifconfig lo multicast
-```
-
-Otherwise, the program with fail with `addMembership: failed (Unknown error -1)`
-error from the `Multicast` module when attempting to add the node to the
-multicast group. 
-
-Usually, `lo` is the name of the local loopback (localhost) network interface on
-modern Linux machines, but could differ depending on your machine and/or OS. To
-check what your localhost network interface is, type `ifconfig`; The interface
-prefixed by `lo`, e.g. `lo0` is usually the interface of interest. Simply
-replace `lo` with the name of your localhost network interface in the command
-above.
 
 License
 -------
